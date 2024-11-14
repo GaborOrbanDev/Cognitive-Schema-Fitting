@@ -1,5 +1,7 @@
-langchain
-langchain-core
-langchain-community
-langchain-openai
 faiss-cpu
+ipython
+langchain
+langchain-community
+langchain-core
+langchain-openai
+langgraph
