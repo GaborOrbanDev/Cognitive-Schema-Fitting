@@ -38,4 +38,4 @@ refinement_prompt: |
 
 resolution_prompt: |
   Create a resoltuion for the current `task` based on the context.
-  C
+  Use the **`OutputState`** to provide the appropriately **structurd answer**.
