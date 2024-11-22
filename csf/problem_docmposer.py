@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from csf.definitions import ProblemDecomposition, ProblemDecompositionInput, ProblemDecompositionOutput
+from .definitions import AgentMessagesState, ProblemDecompositionInput, ProblemDecompositionOutput
 
 
 class DecomposerNodes:
@@ -17,9 +17,9 @@ class DecomposerNodes:
         self.response_llm = (ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
                              .with_structured_output(ProblemDecompositionOutput))
         
-    def intitial_problem_decomposition(self, state: ProblemDecompositionInput) -> ProblemDecomposition:        
+    def intitial_problem_decomposition(self, state: ProblemDecompositionInput) -> AgentMessagesState:        
         prompt = ChatPromptTemplate.from_messages([
-            ("system", self.propmpts["system_prompt"]),
+            ("system", self.prompts["system_prompt"]),
             ("human", self.prompts["initial_pd_suffix_instruction"])
         ])
 
@@ -28,7 +28,7 @@ class DecomposerNodes:
         return {"messages": [*prompt.invoke(state.input_problem).to_messages(), 
                              chain.invoke(state.input_problem)]}
     
-    def self_evaluate(self, state: ProblemDecomposition) -> ProblemDecomposition:
+    def self_evaluate(self, state: AgentMessagesState) -> AgentMessagesState:
         prompt = ChatPromptTemplate.from_messages([
             *state.messages,
             ("human", "{input}")
