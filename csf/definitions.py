@@ -34,7 +34,7 @@ class ProblemDecompositionOutput(BaseModel):
     tasks: list[Task] = Field([], description="List of tasks decomposed from the original problem statement")
 
 
-class AgentMessagesState(BaseModel):
+class AgentMessagesState(ProblemDecompositionInput, ProblemDecompositionOutput):
     messages: Annotated[list[AnyMessage], add_messages] = Field([])
 
 # endregion
