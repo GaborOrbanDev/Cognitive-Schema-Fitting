@@ -1,7 +1,7 @@
 {
   "dockerfile_lines": [],
   "graphs": {
-    "chatbot": "./problem decomposition/graph_script.py:graph",
+    "problem_decomposition": "./problem decomposition/graph_script.py:graph",
     "cot_schema": "./schemas/cot_schema.py:graph"
   },
   "env": "./.env",
