@@ -131,25 +131,3 @@ graph.add_conditional_edges("partial_evaluation",
                             {"resolve": "resolution", "refine": "cognition"})
 graph.add_edge("resolution", END)
 graph = graph.compile()
-
-# %%
-from IPython.display import Image, display
-from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod, NodeStyles
-
-display(Image(graph.get_graph().draw_mermaid_png(draw_method=MermaidDrawMethod.API,)))
-
-# %%
-prompt = {
-    "input_problem": "I want to build a website.",
-    "task_history": [],
-    "task": {
-        "name": "Plan a color palette for the website",
-        "description": "plan a modern looking color palette for the website.",
-        "expected_output": "hex codes for the colors."
-    }
-}
-
-for msg in graph.stream(prompt):
-    print(msg.values())
-
-
