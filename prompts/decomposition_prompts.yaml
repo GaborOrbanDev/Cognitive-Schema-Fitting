@@ -23,6 +23,8 @@ initial_pd_suffix_instruction: |
   4) specific enough to be solved
 
   DO NOT decompose the `input_problem` into too specific subtasks.
+
+  Put your initial problem analysis within the following block: <INITIAL_DECOMPOSITION> ... </INITIAL_DECOMPOSITION>
   
   /* some hints: After this initial decomposition, you will evaluate and refine yourself at the next API call */
 
@@ -34,9 +36,11 @@ evaluation_prompt: |
   b) group together more tasks to make it general but specific enough
   c) remove task from the list if it is not relevant or faulty
   d) add more or missing tasks if needed
-  Be  very self-critical! After the evaluation, say `<REFINE>` if you recommand to refine the tasks and says `<OK>` if refinement is not needed.
+  Be  very self-critical! Critisize yourself, but try to focus on the content itself, not only these requirements.
+  Put your evaluation within the following block: <EVALUATION> ... </EVALUATION>
+  After the evaluation, say `<!REFINE>` if you recommand to refine the tasks and says `<!OK>` if refinement is not needed.
   Refinement phase will be in an other step, so you NOW you should only evaluate the tasks.
-  ALWAYS FINISH EVALUATION WITH `<OK><</STOP>>` or `<REFINE><</STOP>>` LABEL.
+  ALWAYS FINISH EVALUATION WITH `</EVALUATION><!OK><</STOP>>` or `</EVALUATION><!REFINE><</STOP>>` LABEL.
 
 
 refinement_prompt: |
@@ -47,6 +51,8 @@ refinement_prompt: |
   c) remove task from the list if it is not relevant or faulty
   d) add more or missing tasks if needed
   Be very professional! Try to be always specific but keep on mind that the tasks should be general, i.e. further decomposable.
+  Keep on mind: you are doing the refiment here not the evaluation, after the refinement you will evaluate yourself again later in the next call.
+  Put your refinement within the following block: <REFINEMENT> ... </REFINEMENT>
 
   /* some hints: a datetime is more specific than time, full name is more specific then name, country with state and city is more specific then city */
 
