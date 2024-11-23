@@ -10,12 +10,8 @@ from pydantic import BaseModel, Field
 # region Task definitions
 
 class Task(BaseModel):
-    """`Task` object repesents a general subproblem, decomoposed from the orginal `input_problem` of the user"""
-    name: str = Field(..., description="Name of the task")
-    description: str = Field(..., 
-                             description="Essential description with details of the task, including the expected output", 
-                             examples=[{"task": "what is the capital of France?", "expected_output": "city name"},
-                                       {"task": "who many times does the 'r' letter appear in strawberry?", "expected_output": "number of r's"}])
+    """`Task` object repesents a general but specific subproblem, decomoposed from the orginal `input_problem` of the user"""
+    description: str = Field(..., description="Description with essential details of the task")
     
 
 class SolvedTask(Task):
