@@ -37,4 +37,11 @@ verifier_prompt: |
   Put your verification within the following block: <VERIFICATION> </VERIFICATION>
   Put your refined decomposition draft after the verification block in: <REFINED DRAFT> </REFINED DRAFT>. Don't refine the draft if you find it appropriate.
   After the verification and refinement say `<!OK>` if you don't need further verification, or `<!VERIFY>` if because of the previous changes you need further verification.
-  **If you refined and __significantly__ changed the draft, say `<!VERIFY>` to make sure the draft is still appropriate.**
+  **If you refined and __SIGNIFICANTLY__ changed the draft, say `<!VERIFY>` to make sure the draft is still appropriate.**
+
+
+resolution_prompt: |
+  Resolve the decomposition into `DecompOuput` schema. This schema should contain the list of tasks.
+  This list of tasks will send to solver AI agents to execute theset tasks.
+  Place the verified and refined list of tasks into the schema.
+  DO NOT put the inference or reasoning steps into the schema, only the created tasks.
