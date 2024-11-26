@@ -1,13 +1,7 @@
 {
-  "dockerfile_lines": [],
   "graphs": {
-
+    "problem_decomposer": "./csf/problem_decomposer.py:graph",
     "iterative_cot_decomp": "./problem decomposition/iterative_cot_decomp.py:graph",
     "cot_schema": "./schemas/cot_schema.py:graph"
-  },
-  "env": "./.env",
-  "python_version": "3.11",
-  "dependencies": [
-    "."
-  ]
+  }
 }
