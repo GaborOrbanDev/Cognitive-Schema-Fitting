@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 import openai
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 load_dotenv()
 
@@ -35,23 +35,16 @@ with open("./prompts/iterative_decomposition.yaml") as f:
     PROMPTS = yaml.safe_load(f)
 
 # %%
-PROMPTS
-
-# %%
 def decompose(state: DecompInput) -> DecompGraphState:
-    prompt = ChatPromptTemplate.from_messages([SystemMessagePromptTemplate.from_template(PROMPTS["system_prompt"])])
-    model = ChatOpenAI(model="gpt-4o")
-    chain = (
-        prompt
-        | RunnableParallel(
-            response=model,
-            context=RunnablePassthrough()
-        )
-        | RunnableLambda(
-            lambda x: x["context"].messages + [x["response"]]
-        )
-    )
-    return {"messages": chain.invoke(state.input_problem)}
+    system_prompt = (SystemMessagePromptTemplate
+                        .from_template(PROMPTS["system_prompt"]))
+    prompt = ChatPromptTemplate.from_messages([system_prompt])
+    chain = prompt | RunnableParallel(
+        response = ChatOpenAI(model="gpt-4o"),
+        context = RunnablePassthrough()
+    ) | RunnableLambda(lambda x: x["context"].messages + [x["response"]])
+    context = chain.invoke({"input_problem": state.input_problem})
+    return {"messages": context}
 
 
 def verify(state: DecompGraphState) -> DecompGraphState:
@@ -74,27 +67,39 @@ def verify(state: DecompGraphState) -> DecompGraphState:
         )
     )
     response, context = chain.invoke({"context": state.messages, "verifier_prompt": PROMPTS["verifier_prompt"]}).values()
-
     if "<!OK>" in response.content:
         setattr(context[-1], "is_verified", True)
     else:
         setattr(context[-1], "is_verified", False)
-
     return {"messages": context}
+
+
+def resolve(state: DecompGraphState) -> DecompOutput:
+    prompt = ChatPromptTemplate.from_messages([
+        ("placeholder", "{context}"),
+        ("user", "{input}")
+    ])
+    llm = (ChatOpenAI(model="gpt-4o-mini", temperature=0)
+           .with_structured_output(DecompOutput)
+           .with_retry(retry_if_exception_type=(ValidationError,), stop_after_attempt=2))
+    chain = prompt | llm
+    response = chain.invoke({"context": state.messages[-2:], "input": PROMPTS["resolution_prompt"]}) 
+    return response
 
 # %%
 workflow = StateGraph(DecompGraphState, input=DecompInput, output=DecompGraphState)
 workflow.add_node("decompose", decompose)
 workflow.add_node("verify", verify)
+workflow.add_node("resolve", resolve)
 workflow.add_edge(START, "decompose")
 workflow.add_edge("decompose", "verify")
 workflow.add_conditional_edges(
     "verify",
-    lambda state: getattr(state.messages[-1], "is_verified", False),
+    lambda state: getattr(state.messages[-1], "is_verified", False) or (len(state.messages) > 7),
     {
         False: "verify",
-        True: END
+        True: "resolve"
     }
 )
+workflow.add_edge("resolve", END)
 graph = workflow.compile()
-
