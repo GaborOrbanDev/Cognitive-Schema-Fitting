@@ -1,8 +1,22 @@
-faiss-cpu
+# Core
+pandas
+pyarrow
+
+# Jupyter environment
 ipykernel
+
+# Vector similarity search
+faiss-cpu
+
+# Data and model management
+datasets
+
+# Langchain
 langchain
 langchain-community
 langchain-core
 langchain-openai
+
+# Langgraph
 langgraph
 langgraph-cli[inmem]==0.1.55
