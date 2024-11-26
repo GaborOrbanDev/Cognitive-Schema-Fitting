@@ -1,93 +1,144 @@
 from __future__ import annotations
 
 import os
+from typing import Annotated
 import yaml
+
 from dotenv import load_dotenv
-from langchain_core.messages import AnyMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AnyMessage
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough, RunnableParallel
 from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
 import openai
-from pprint import pprint
-from definitions import AgentMessagesState, ProblemDecompositionInput, ProblemDecompositionOutput
+from pydantic import BaseModel, Field, ValidationError
+
+
+# ---------------------------------------------------------------------------------
+# region Task definitions
+
+class Task(BaseModel):
+    """`Task` object repesents a general but specific subproblem, decomoposed from the orginal `input_problem` of the user"""
+    description: str = Field(..., description="Description with essential details of the task")
+    
+
+class SolvedTask(Task):
+    """`SolvedTask` object represents a task that has been solved by the system"""
+    solution: str = Field(..., description="The solution of the task")
+
+# endregion    
+# ---------------------------------------------------------------------------------
+# region Schema definitions for problem decomposition component
+
+class ProblemDecompositionInput(BaseModel):
+    input_problem: str = Field(..., description="The original problem statement given by the user")
+
+
+class ProblemDecompositionOutput(BaseModel):
+    tasks: list[Task] = Field([], description="List of tasks decomposed from the original problem statement")
+
+
+class AgentMessagesState(BaseModel):
+    messages: Annotated[list[AnyMessage], add_messages] = Field([])
+
+class ProblemDecompositionState(
+        ProblemDecompositionInput, 
+        ProblemDecompositionOutput,
+        AgentMessagesState
+    ):
+    pass
+
+# endregion
+# ---------------------------------------------------------------------------------
+# region Definitions for cognitive schema selection
 
 
 class ProblemDecomposer:
     def __init__(self) -> None:
-        with open("prompts/decomposition_prompts.yaml", "r") as file:
+        with open("./prompts/iterative_decomposition.yaml", "r") as file:
             self.prompts = yaml.safe_load(file)
 
-        self.llm = ChatOpenAI(model="gpt-4o", temperature=0.5)
-        self.eval_llm = ChatOpenAI(model="gpt-4o", temperature=0.7, stop_sequences=["<</STOP>>"])
-        self.response_llm = (
-            ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
-            .with_structured_output(ProblemDecompositionOutput)
-        )
+        self.llm = ChatOpenAI(model="gpt-4o")
+        self.response_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+    
+    def create_graph(self) -> CompiledStateGraph:
+        return self.__call__()
 
     def __call__(self) -> CompiledStateGraph:
-        workflow = StateGraph(AgentMessagesState, input=ProblemDecompositionInput, output=ProblemDecompositionOutput)
+        workflow = StateGraph(ProblemDecompositionState, input=ProblemDecompositionInput, output=ProblemDecompositionOutput)
 
-        workflow.add_node("initial_problem_decomposition", self.intitial_problem_decomposition)
-        workflow.add_node("self_evaluate", self.self_evaluate)
-        workflow.add_node("self_refine", self.self_refine)
-        workflow.add_node("resolution", self.resolution)
+        workflow.add_node("decompose", self.decompose)
+        workflow.add_node("verify", self.verify)
+        workflow.add_node("resolve", self.resolve)
 
-        workflow.add_edge(START, "initial_problem_decomposition")
-        workflow.add_edge("initial_problem_decomposition", "self_evaluate")
+        workflow.add_edge(START, "decompose")
+        workflow.add_edge("decompose", "verify")
         workflow.add_conditional_edges(
-            "self_evaluate",
-            lambda state: getattr(state.messages[-1], "is_evaluation_ok", False),
+            "verify",
+            lambda state: getattr(state.messages[-1], "is_verified", False) or (len(state.messages) > 7),
             {
-                True: "resolution",
-                False: "self_refine"
+                False: "verify",
+                True: "resolve"
             }
         )
-        workflow.add_edge("self_refine", "self_evaluate")
-        workflow.add_edge("resolution", END)
+        workflow.add_edge("resolve", END)
 
         return workflow.compile()
 
-        
-    def intitial_problem_decomposition(self, state: ProblemDecompositionInput) -> AgentMessagesState:        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", self.prompts["system_prompt"]),
-            ("human", self.prompts["initial_pd_suffix_instruction"])
-        ])
-        chain = prompt | self.llm
-        return {"messages": prompt.invoke(state.input_problem).to_messages() + [chain.invoke(state.input_problem)]}
-    
-    def self_evaluate(self, state: AgentMessagesState) -> AgentMessagesState:
-        prompt = ChatPromptTemplate.from_messages([*state.messages, ("human", "{input}")])
-        chain = prompt | self.eval_llm
-        evaluation_context: list[AnyMessage] = [HumanMessage(self.prompts["evaluation_prompt"]), chain.invoke(self.prompts["evaluation_prompt"])]
-        if evaluation_context[-1].content.endswith("<OK>"):
-            setattr(evaluation_context[-1], "is_evaluation_ok", True)
-        else:
-            setattr(evaluation_context[-1], "is_evaluation_ok", False)
-        return {"messages": evaluation_context}
-    
-    def self_refine(self, state: AgentMessagesState) -> AgentMessagesState:
-        prompt = ChatPromptTemplate.from_messages([*state.messages, ("human", "{input}")])
-        chain = prompt | self.llm
-        return {"messages": [HumanMessage(self.prompts["refinement_prompt"]), chain.invoke(self.prompts["refinement_prompt"])]}
+    def decompose(self, state: ProblemDecompositionInput) -> ProblemDecompositionState:
+        system_prompt = (SystemMessagePromptTemplate
+                            .from_template(self.prompts["system_prompt"]))
+        prompt = ChatPromptTemplate.from_messages([system_prompt])
+        chain = prompt | RunnableParallel(
+            response = self.llm,
+            context = RunnablePassthrough()
+        ) | RunnableLambda(lambda x: x["context"].messages + [x["response"]])
+        context = chain.invoke({"input_problem": state.input_problem})
+        return {"messages": context}
 
-    def resolution(self, state: AgentMessagesState) -> ProblemDecompositionOutput:
-        prompt = ChatPromptTemplate.from_messages([*state.messages, ("human", "{input}")])
-        chain = prompt | self.response_llm
-        return chain.invoke(self.prompts["resolution_prompt"])  
-        
+
+    def verify(self, state: ProblemDecompositionState) -> ProblemDecompositionState:
+        prompt = ChatPromptTemplate.from_messages([
+            ("placeholder", "{context}"),
+            ("human", "{verifier_prompt}")
+        ])
+        chain = (
+            prompt 
+            | RunnableParallel(
+                response = self.llm,
+                context = RunnableLambda(lambda x: [x.messages[-1]])
+            ) 
+            | RunnableLambda(
+                lambda x: {
+                    "response": x["response"],
+                    "context": x["context"] + [x["response"]]
+                }
+            )
+        )
+        response, context = chain.invoke({"context": state.messages, "verifier_prompt": self.prompts["verifier_prompt"]}).values()
+        if "<!OK>" in response.content:
+            setattr(context[-1], "is_verified", True)
+        else:
+            setattr(context[-1], "is_verified", False)
+        return {"messages": context}
+
+
+    def resolve(self, state: ProblemDecompositionState) -> ProblemDecompositionOutput:
+        prompt = ChatPromptTemplate.from_messages([
+            ("placeholder", "{context}"),
+            ("user", "{input}")
+        ])
+        llm = (self.response_llm
+            .with_structured_output(ProblemDecompositionOutput)
+            .with_retry(retry_if_exception_type=(ValidationError,), stop_after_attempt=2))
+        chain = prompt | llm
+        response = chain.invoke({"context": state.messages[-2:], "input": self.prompts["resolution_prompt"]}) 
+        return response
+
 
 if __name__ == "__main__":
     load_dotenv()
     openai.api_key = os.getenv("OPENAI_API_KEY")
-
-    problem_decomposer = ProblemDecomposer()
-    graph = problem_decomposer()
-
-    context = graph.stream(ProblemDecompositionInput(input_problem="I want to build a house."))
-    for state in context:
-        pprint(state)
-        print("\n")
-        print("---------------------------------")
-        print("\n")
+    graph = ProblemDecomposer().create_graph()
