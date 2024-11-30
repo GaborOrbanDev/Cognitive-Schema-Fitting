@@ -2,8 +2,9 @@
 pandas
 pyarrow
 
-# Jupyter environment
+# environment
 ipykernel
+debugpy
 
 # Vector similarity search
 faiss-cpu
