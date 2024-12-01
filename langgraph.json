@@ -1,6 +1,5 @@
 {
   "graphs": {
-    "cot_schema": "./schemas/cot_schema.py:graph",
     "tot_schema": "./schemas/tot_schema.py:graph"
   }
 }
