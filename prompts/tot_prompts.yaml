@@ -35,7 +35,10 @@ task_decomposition_prompt: |
 
 
 thought_generation_system_prompt: |
-  Solve the given `task` in discrete `steps`.
+  <input_problem>
+  {input_problem}
+  </input_problem>
+  With the context given in the `input_problem` and your knowledge solve the given `task` in discrete `steps`.
   <task>
   {task}
   </task>
@@ -46,12 +49,15 @@ thought_generation_prompt: |
     <step>
     {step}
     </step>
-    Be creative and pricese.
+    Be creative and pricese. Remember, to use the context given in the `input_problem` and your best knowledge.
     DO NOT BE TOO VERBOSE, becuase for each `step` we generate multiple alternative thoughts, and you are only one thread.
     But you may think on the `step` before you answer.
 
 
 evaluation_system_prompt: |
+  <input_problem>
+  {input_problem}
+  </input_problem>
   <task>
   {task}
   </task>
