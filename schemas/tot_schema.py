@@ -13,6 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.graph.message import AnyMessage, add_messages
+from langgraph.errors import GraphRecursionError
 import openai
 from pprint import pprint
 from pydantic import BaseModel, Field, ValidationError
@@ -71,7 +72,7 @@ class ToTAgent:
 
         # high temperature for more creative responses, low top_p for more likely responses
         # source: https://medium.com/@1511425435311/understanding-openais-temperature-and-top-p-parameters-in-language-models-d2066504684f
-        self.cognition_llm = ChatOpenAI(model="gpt-4o", temperature=0.9, top_p=0.7)
+        self.cognition_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.9, top_p=0.7)
         self.evaluation_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
         self.resolution_llm = ChatOpenAI(model="gpt-4o")
 
@@ -100,44 +101,84 @@ class ToTAgent:
     # --------------------------------------------------------------------------------
 
     def cognition(self, state: ThoughtProcess) -> ThoughtProcess:
+        tree = Thought(thought=AIMessage("<SEED>"))
+    
+        self._bfs_cognition_walk(state=state, parents=[tree], level=0)
+
+        return {"thought": tree}
+
+
+    def _bfs_cognition_walk(self, state: ThoughtProcess, parents: list[Thought], level: int, beam: int = 2):
+        """Breath First Search to walk through the cognition tree
+
+        This approach is much faster then the Depth First Search because of batch processing.
+
+        Args:
+            state (ThoughtProcess): state of the graph
+            parents (list[Thought]): list of parent thoughts
+            level (int): current level of the tree
+            beam (int, optional): number of alternative thoughts on the same branch. Defaults to 2.
+
+        Returns:
+            None
+                It modifies the parents list in place.
+
+        Raises:
+            GraphRecursionError: if the system is unable to create a correct thought
+        """
+
         cognition_chain = self._create_thought_generation_chain()
         evaluation_chain = self._create_evaluation_chain()
-        
-        tree = Thought(
-            thought=AIMessage("<SEED>")
-        )
 
-        def cognition_walk(parent: Thought, level: int, beam: int = 2):
-            children: list[Thought] = []
+        children: list[Thought] = []
+        iter_count: int = 0
+        evaluation_text: str | None = None
 
-            for _ in range(beam):
-                child: Thought = cognition_chain.invoke({
+        while iter_count < 3:
+            iter_count += 1
+
+            raw_children = cognition_chain.batch([
+                {
+                    "input_problem": state.input_problem,
                     "task": state.task,
                     "step": state.steps[level],
-                    "context": parent.context
-                })
-                children.append(child)
-            
-            children: list[Thought] = evaluation_chain.invoke({
+                    "context": parent.context + ([HumanMessage(evaluation_text)] if evaluation_text else [])
+                }
+                for parent in parents
+                for _ in range(beam)
+            ])
+
+            evaled_children, evaluation_text = evaluation_chain.invoke({
+                "input_problem": state.input_problem,
                 "task": state.task,
                 "step": state.steps,
-                "thoughts": children
-            })
+                "thoughts": raw_children
+            }).values()
 
-            children = list(filter(lambda x: x.evaluation >= 0.35, children))
-            
-            if level < len(state.steps) - 1: 
-                appended_children = []
-                for child in children:
-                    appended_children.append(cognition_walk(child, level + 1))
-                parent.children.extend(appended_children)
-            else:
-                parent.children.extend(children)
+            children.extend(list(filter(lambda x: x.evaluation >= 0.5, evaled_children)))
 
-            return parent
+            if len(children) > 0:
+                break
+
+        if len(children) == 0:
+            raise GraphRecursionError("Unable to create correct thought")
+
+        # if walk has not reached the end of the tree, continue walking
+        if level < len(state.steps) - 1:
+            self._bfs_cognition_walk(state, children, level + 1)
+
+        # if walk has aleady reached the end of the tree, and returned to the root
+        if level == 0:
+            parents[0].children.extend(children)
+        # if walk has reached the end of the tree, and returning to the parent
+        else:
+            for child in children:
+                for parent in parents:
+                    if parent.context[-1].content == child.context[-3].content:
+                        parent.children.append(child)
+                        break
         
-        tree = cognition_walk(tree, 0)
-        return {"thought": tree}
+        return None
 
 
     def _create_thought_generation_chain(self):
@@ -196,18 +237,22 @@ class ToTAgent:
                 )
                 | RunnableParallel(
                     evaluation=lambda x: getattr(x["evaluation"], "scores"),
+                    evaluation_text=lambda x: getattr(x["evaluation"], "evaluation_text"),
                     thoughts=lambda x: x["thoughts"]
                 )
                 | RunnableLambda(
-                    lambda x: [
-                        Thought(
-                            thought=getattr(x["thoughts"][i], "thought"),
-                            evaluation=score,
-                            context=getattr(x["thoughts"][i], "context"),
-                            children=getattr(x["thoughts"][i], "children")
-                        )
-                        for i, score in enumerate(x["evaluation"])
-                    ]
+                    lambda x: {
+                        "thoughts": [
+                            Thought(
+                                thought=getattr(x["thoughts"][i], "thought"),
+                                evaluation=score,
+                                context=getattr(x["thoughts"][i], "context"),
+                                children=getattr(x["thoughts"][i], "children")
+                            )
+                            for i, score in enumerate(x["evaluation"])
+                        ],
+                        "evaluation_text": x["evaluation_text"]
+                    }
                 )
             ).with_retry(retry_if_exception_type=(IndexError, ValidationError), stop_after_attempt=2)
         )
