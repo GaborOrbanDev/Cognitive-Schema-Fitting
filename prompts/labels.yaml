@@ -1,2 +1,8 @@
-cot: Chain of Thought
+cot:
+  - name: Chain of Thought
+tot:
+  - name: Tree of Thought
+spp:
+  - name: Solo Performance Prompting
+  - source: https://arxiv.org/pdf/2307.05300
 pd: Problem Decomposition
