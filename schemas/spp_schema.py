@@ -1,13 +1,13 @@
 # %% importing libraries
-import os
 from typing import Annotated
 import yaml
 from dotenv import load_dotenv
 from langchain_core.messages import AnyMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSerializable
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
 
@@ -61,6 +61,8 @@ class SPPAgent:
                 lambda x: [getattr(x["context"], "messages")[-1]] + [x["response"]]
             )
         )
+
+    # --------------------------------------------------------------------------------
 
     def schema_setup(self, state: SchemaAgentInput) -> SchemaAgentState:
         system_prompt = SystemMessage(
@@ -136,34 +138,55 @@ class SPPAgent:
             return "resolve"
         else:
             return "revise"
-
-
-
         
+    def resolution(self, state: SchemaAgentState) -> SchemaAgentState:
+        context = [
+            state.messages[0], # system prompt
+            state.messages[-3], # last solution proposal
+            state.messages[-1] # last feedback
+        ]
+        prompt = self.prompts["resolution_prompt"]
+        response_context = self.node_context_returner_llm_chain.invoke({
+                "context": context,
+                "prompt": prompt
+        })
+        return {
+            "messages": response_context,
+            "solution": response_context[-1].content
+        }
+    
+    # --------------------------------------------------------------------------------
 
+    def __call__(self) -> CompiledStateGraph:
+        workflow = StateGraph(SchemaAgentState, input=SchemaAgentInput, output=SchemaAgentOutput)
+
+        workflow.add_node("schema_setup", self.schema_setup)
+        workflow.add_node("persona_indentification", self.persona_indentification)
+        workflow.add_node("brainstorming", self.brainstorming)
+        workflow.add_node("initial_solution_proposal", self.initial_solution_proposal)
+        workflow.add_node("feedback", self.feedback)
+        workflow.add_node("resolution", self.resolution)
+
+        workflow.add_edge(START, "schema_setup")
+        workflow.add_edge("schema_setup", "persona_indentification")
+        workflow.add_edge("persona_indentification", "brainstorming")
+        workflow.add_edge("brainstorming", "initial_solution_proposal")
+        workflow.add_edge("initial_solution_proposal", "feedback")
+        workflow.add_conditional_edges(
+            "feedback",
+            self.revision_router,
+            {
+                "resolve": "resolution",
+                "revise": "initial_solution_proposal"
+            }
+        )
+        workflow.add_edge("resolution", END)
+
+        return workflow.compile()
+    
+    def create_graph(self):
+        return self.__call__()
 
 
 # %%
-agent = SPPAgent()
-workflow = StateGraph(SchemaAgentState, input=SchemaAgentInput)
-workflow.add_node("schema_setup", agent.schema_setup)
-workflow.add_node("persona_indentification", agent.persona_indentification)
-workflow.add_node("brainstorming", agent.brainstorming)
-workflow.add_node("initial_solution_proposal", agent.initial_solution_proposal)
-workflow.add_node("feedback", agent.feedback)
-
-workflow.add_edge(START, "schema_setup")
-workflow.add_edge("schema_setup", "persona_indentification")
-workflow.add_edge("persona_indentification", "brainstorming")
-workflow.add_edge("brainstorming", "initial_solution_proposal")
-workflow.add_edge("initial_solution_proposal", "feedback")
-workflow.add_conditional_edges(
-    "feedback",
-    agent.revision_router,
-    {
-        "resolve": END,
-        "revise": "initial_solution_proposal"
-    }
-)
-
-graph = workflow.compile()
+graph = SPPAgent().create_graph()

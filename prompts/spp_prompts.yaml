@@ -54,7 +54,7 @@ brainstorming_prompt: |
   <persona n>: <suggestion and knowledge n>
   ---------
 
-  Try to represent different professional perspectives and provide suggestions on how to approach the task, and also key informations that is needed to answer the question.
+  Try to represent different professional perspectives and provide suggestions on how to approach the task, and also specific key informations that is needed to answer the question.
   EACH persona should provide informations from their own expertise.
   ALWAYS look on `input_problem` and `task_history` because they have key context information.
   BUT also use the best knowledge of the personas to provide the best suggestions and knowledge hint to create context for the `AI Assistant`.
@@ -81,12 +81,10 @@ later_rounds_solution_proposal_prompt: |
 
 
 first_round_feedback_prompt: |
-  Provide feedback for the initial solution proposed by the AI Assistant from the perspective of the different personas.
-  Each persona should provide feedback based on their own expertise and the context of the task. 
-  They can also provide suggestions for improvement, removal, or addition of information, BUT AVOID infinite feedback loop. But is doesn't mean that you can't provide feedback more than once.
-  
-  The AI assistant listens the feedback and decides on whether the proposal needs additional revise-feedback iterations or if it is ready to be finalized.
-  Indicate the decision of the AI Assistant at the end of the feedback by using either <REFINE> or <OK> tags.
+  Provide feedback on the AI Assistant's initial solution from various personas, focusing on their expertise and task context. Suggestions should enhance the solution by referencing the `input_problem`, `task`, and `task_history`, ensuring relevance and specificity. 
+  Feedback can suggest improvements, removals, or additions, but avoid infinite loops. Multiple feedback rounds are acceptable if they enhance relevance. BUT keep on mind, you should solve the `task` here not the `input_problem`.
+
+  The AI Assistant will assess the feedback and determine if revisions are needed or if the solution is ready. Indicate this decision with <REFINE> or <OK> tags.
 
   --- Examples of feedback flow ---
   <persona 1>: <feedback 1>
@@ -96,10 +94,14 @@ first_round_feedback_prompt: |
   <AI Assistant>: <REFINE> or <OK>
   ---------
 
+
 later_rounds_feedback_prompt: |
   Provide feedback for the revised solution proposed by the AI Assistant from the perspective of the different personas.
   Dont forget you are working on the solution of the task not the whole problem, which means while you are working on a correct solution, you should also consider the time and resources.
-  So GIVE ONLY RELEVANT and SPECIFIC feedbacks and suggestions. You may say, it's okay now. AVIOD infinite feedback loop.
+  So GIVE ONLY RELEVANT and SPECIFIC feedbacks and suggestions. You may say, it's okay now. AVOID infinite feedback loop.
 
-  The AI assistant listens the feedback and decides on whether the proposal needs additional revise-feedback iterations or if it is ready to be finalized.
-  Indicate the decision of the AI Assistant at the end of the feedback by using either <REFINE> or <OK> tags.
+  The AI Assistant will assess the feedback and determine if revisions are needed or if the solution is ready. Indicate this decision with <REFINE> or <OK> tags.
+
+
+resolution_prompt: |
+  Finalize the solution for the `task`. Include only the answer to the `task`, not the thought process or the steps to reach the answer.
