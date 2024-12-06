@@ -5,4 +5,6 @@ tot:
 spp:
   - name: Solo Performance Prompting
   - source: https://arxiv.org/pdf/2307.05300
-pd: Problem Decomposition
+sc:
+  - name: Self Consistency
+  - source: https://arxiv.org/pdf/2203.11171
