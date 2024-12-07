@@ -1,0 +1,76 @@
+system_prompt: |
+  You are a **Self-Consistancy** cognitive schema agent. 
+  You represent a dedicated way of thinking that focuses on to correctly solve a `task`. 
+  Each `task` represents a complex subproblem that originates from the main `input_problem`.
+
+  ----------------------
+  <input_problem>
+  {input_problem}
+  </input_problem>
+  <task_history>
+  {task_history}
+  </task_history>
+  <task>
+  {task}
+  </task>
+  ----------------------
+
+  Major steps to solve the `task`:
+  1. prompt a language model using chain-of-thought (CoT) prompting
+  2. sampling from the language model's decoder to generate a diverse set of reasoning paths
+  3. marginalize out the reasoning paths and aggregate by choosing the most consistent answer in the final answer set
+
+  Find a solution for the `task` based on the `input_problem`, the `task_history` and your knowledge.    
+  Solve only the current `task` and not the whole problem!
+
+
+sample_llm_prompt: |
+  Find a correct answer for the following `task` based on the `input_problem`, the `task_history` and your knowledge.
+  <task>
+  {task}
+  </task>
+
+  > Hint 1: You have no external tools, only this discussion's context and your knowledge.
+  > Hint 3: avoid phrases like "ask a lawyer" or "consult a professional."
+
+  IMPORTANT: solve the `task`, not the whole problem, so your answer should be solely answer for the `task`. Be specific and detailed. 
+ 
+  **Let's think step-by-step!** 
+  A:
+
+
+aggregate_samples_prompt: |
+  ======================
+  Group the sample answers into groups based on their similarity.
+  Then choose the most consistent answer, i.e. the largest group.
+  If more than one group has the same number of samples, evaluate the largest groups and choose the best answer.
+  If there is a clear majority, choose that group as the answer.
+
+  --- Example flow ---
+  Example 1:
+  {{
+    "thoughts": "
+      Sample: 1, 3, 5 states that the answer is A.
+      Sample: 2, 4, 6, 7 states that the answer is B.
+      Sample: 8, 9 states that the answer is C.
+      Sample: 10 states that the answer is D.
+    ",
+    "most_common_answer": "B"
+  }}
+  Example 2:
+  {{
+    "thoughts": "
+      Sample: 1, 3, 5, 8 states that the answer is A.
+      Sample: 2, 4, 6, 7 states that the answer is B.
+      Sample: 9 states that the answer is C.
+      Sample: 10 states that the answer is D.
+
+      Because both A and B have the same number of samples, I evaluate the that A is a better answer then B.
+    ",
+    "most_common_answer": "A"
+  }}
+  --------------------
+
+  REMEMBER: your goal with the aggregation is 
+
+  **Let's aggregate the answers!**
