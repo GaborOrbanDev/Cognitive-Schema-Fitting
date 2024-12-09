@@ -1,7 +1,7 @@
 # %% importing libraries
 from pprint import pprint
 import operator
-from typing import Annotated
+from typing import Annotated, Any
 import yaml
 from dotenv import load_dotenv
 from langchain_core.output_parsers import StrOutputParser
@@ -35,7 +35,7 @@ class SchemaAgentInput(BaseModel):
 
 
 class SchemaAgentOutput(BaseModel):
-    solution: str = Field("", description="The solution of the task")
+    solution: Any = Field("", description="The solution of the task")
 
 
 class SampleResponse(BaseModel):
@@ -91,29 +91,43 @@ class SCAgent:
         }
     
     def aggregate_samples(self, state: SchemaAgentState) -> SchemaAgentState:
-        # class SampleAggregator(BaseModel):
-        #     thoughts: str = Field("", description="Scratchpad for the model where it can think on the similarity of the different samples and try to group them")
-        #     most_common_answer: str = Field("", description="The most common answer, i.e. the largest group of similar answers")
 
         class SampleGroup(BaseModel):
-            samples: list[str] = Field([], description="List of samples that are similar to each other. Each item of the list is the text of the sample answer")
+            sample_indexies: list[int] = Field([], description="List of samples that are similar to each other. Each item of is the sample index in the original list of samples")
         
         class SampleAggregator(BaseModel):
             scratchpad: str = Field("", description="Scratchpad for the model where it can think on the similarity of the different samples before grouping them")
             sample_groups: list[SampleGroup] = Field([], description="List of groups of samples that are similar to each other")
+            
+            def get_longest_group_indexes(self) -> list[int]:
+                return max(self.sample_groups, key=lambda group: len(group.sample_indexies)).sample_indexies
+            
+            def get_longest_group(self) -> list[SampleResponse]:
+                return [state.samples[i] for i in self.get_longest_group_indexes()]
+            
+
+        summarize_chain = (
+            RunnableLambda(
+                lambda x: {
+                    "samples": [sample_w_index
+                                for i, sample in enumerate(x["samples"])
+                                for sample_w_index in (HumanMessage(f"=========Sample index: {i}=========="),
+                                                        AIMessage(getattr(sample, "answer")))]
+                } 
+            )
+        )
+
 
         chain = (
             RunnableLambda(
                 lambda x: {
-                    **x,
                     "samples": [sample_w_index
                                 for i, sample in enumerate(x["samples"])
-                                for sample_w_index in (HumanMessage(f"=========Sample {i+1}=========="),
+                                for sample_w_index in (HumanMessage(f"=========Sample index: {i}=========="),
                                                         AIMessage(getattr(sample, "answer")))]
                 } 
             )
             | ChatPromptTemplate.from_messages([
-                ("placeholder", "{context}"),
                 ("placeholder", "{samples}"),
                 ("user", self.prompts["aggregate_samples_prompt"])
             ])
@@ -123,17 +137,17 @@ class SCAgent:
             )
             | RunnableLambda(
                 lambda x: {
-                    "response": x["response"],
+                    "optimal_samples": x["response"].get_longest_group(),
                     "context": getattr(x["context"], "messages") + [AIMessage(content=str(x["response"]))]
                 }
             )
         )
 
-        response, context = chain.invoke({"context": state.messages, "samples": state.samples}).values()
+        response, context = chain.invoke({"samples": state.samples}).values()
 
         return {
             "messages": context,
-            "solution": getattr(response, "most_common_answer")
+            "solution": response
         }
     
     # ---------------------------------------------------------------------------

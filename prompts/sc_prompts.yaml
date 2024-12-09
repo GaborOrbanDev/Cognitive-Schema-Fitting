@@ -42,35 +42,5 @@ sample_llm_prompt: |
 aggregate_samples_prompt: |
   ======================
   Group the sample answers into groups based on their similarity.
-  Then choose the most consistent answer, i.e. the largest group.
-  If more than one group has the same number of samples, evaluate the largest groups and choose the best answer.
-  If there is a clear majority, choose that group as the answer.
-
-  --- Example flow ---
-  Example 1:
-  {{
-    "thoughts": "
-      Sample: 1, 3, 5 states that the answer is A.
-      Sample: 2, 4, 6, 7 states that the answer is B.
-      Sample: 8, 9 states that the answer is C.
-      Sample: 10 states that the answer is D.
-    ",
-    "most_common_answer": "B"
-  }}
-  Example 2:
-  {{
-    "thoughts": "
-      Sample: 1, 3, 5, 8 states that the answer is A.
-      Sample: 2, 4, 6, 7 states that the answer is B.
-      Sample: 9 states that the answer is C.
-      Sample: 10 states that the answer is D.
-
-      Because both A and B have the same number of samples, I evaluate the that A is a better answer then B.
-    ",
-    "most_common_answer": "A"
-  }}
-  --------------------
-
-  REMEMBER: your goal with the aggregation is 
 
   **Let's aggregate the answers!**
