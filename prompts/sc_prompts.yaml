@@ -44,3 +44,15 @@ aggregate_samples_prompt: |
   Group the sample answers into groups based on their similarity.
 
   **Let's aggregate the answers!**
+
+
+summarize_prompt: |
+  ======================
+  Summarize the aggregated answers and provide a final answer for the `task`.
+  Give only a summary of the different samples, nothing more. They are almost all the same, so I want to unify them.
+
+
+best_group_prompt: |
+  ======================
+  Choose the best summary from the context, that match the best to the `task`, the `input_problem` and the `task_history`.
+  Think before you choose!

@@ -48,6 +48,7 @@ class SampleResponse(BaseModel):
 class SchemaAgentState(SchemaAgentInput, SchemaAgentOutput):
     messages: Annotated[list[AnyMessage], add_messages] = Field([], description="The inner messages of the agent")
     samples: list[SampleResponse] = []
+    largest_groups: list[list[SampleResponse]] = []
 
 
 # %% creating agent class
@@ -99,26 +100,14 @@ class SCAgent:
             scratchpad: str = Field("", description="Scratchpad for the model where it can think on the similarity of the different samples before grouping them")
             sample_groups: list[SampleGroup] = Field([], description="List of groups of samples that are similar to each other")
             
-            def get_longest_group_indexes(self) -> list[int]:
-                return max(self.sample_groups, key=lambda group: len(group.sample_indexies)).sample_indexies
-            
-            def get_longest_group(self) -> list[SampleResponse]:
-                return [state.samples[i] for i in self.get_longest_group_indexes()]
-            
-
-        summarize_chain = (
-            RunnableLambda(
-                lambda x: {
-                    "samples": [sample_w_index
-                                for i, sample in enumerate(x["samples"])
-                                for sample_w_index in (HumanMessage(f"=========Sample index: {i}=========="),
-                                                        AIMessage(getattr(sample, "answer")))]
-                } 
-            )
-        )
+            def get_largest_groups(self) -> list[list[SampleResponse]]:
+                length = max(len(group.sample_indexies) for group in self.sample_groups)
+                return [[state.samples[i] for i in group.sample_indexies] 
+                        for group in self.sample_groups 
+                        if len(group.sample_indexies) == length]
 
 
-        chain = (
+        clustering_chain = (
             RunnableLambda(
                 lambda x: {
                     "samples": [sample_w_index
@@ -137,18 +126,65 @@ class SCAgent:
             )
             | RunnableLambda(
                 lambda x: {
-                    "optimal_samples": x["response"].get_longest_group(),
+                    "largest_groups": x["response"].get_largest_groups(),
                     "context": getattr(x["context"], "messages") + [AIMessage(content=str(x["response"]))]
                 }
             )
         )
 
-        response, context = chain.invoke({"samples": state.samples}).values()
+        largest_groups, context = clustering_chain.invoke({"samples": state.samples}).values()
 
         return {
             "messages": context,
-            "solution": response
+            "largest_groups": largest_groups
         }
+    
+    def choose_best_group(self, state: SchemaAgentState) -> SchemaAgentState:
+        class BestGroup(BaseModel):
+            thought: str = Field("", description="The thought process of the model to choose the best group")
+            best_group_index: int = Field(description="The index of the best group in the list of largest groups")
+
+        summarize_chain = (
+            RunnableLambda(
+                lambda x: {"group": [("assistant", sample.answer) for sample in x["group"]]}
+            )
+            | ChatPromptTemplate.from_messages([
+                state.messages[0],
+                ("placeholder", "{group}"),
+                ("user", self.prompts["summarize_prompt"])
+            ])
+            | self.llm
+        )
+
+        best_group_selector = (
+            RunnableLambda(
+                lambda x: {
+                    "summaries": [summary_w_index
+                                for i, summary in enumerate(x["summaries"])
+                                for summary_w_index in (HumanMessage(f"=========Summry index: {i}=========="), summary)]
+                } 
+            )
+            | ChatPromptTemplate.from_messages([
+                state.messages[0],
+                ("placeholder", "{summaries}"),
+                ("user", self.prompts["best_group_prompt"])
+            ])
+            | self.llm.with_structured_output(BestGroup) 
+        )
+
+        summaries = summarize_chain.batch([{"group": group} for group in state.largest_groups])
+
+        if len(summaries) == 1:
+            return {
+                "messages": summaries,
+                "solution": summaries[0].content
+            }
+        else:
+            best_group = best_group_selector.invoke({"summaries": summaries})
+            return {
+                "messages": summaries + [AIMessage(str(best_group)), summaries[best_group.best_group_index]],
+                "solution": summaries[best_group.best_group_index].content
+            }
     
     # ---------------------------------------------------------------------------
     
@@ -157,11 +193,13 @@ class SCAgent:
         workflow.add_node("setup", self.schema_setup)
         workflow.add_node("sample_llm", self.sample_llm)
         workflow.add_node("aggregate_samples", self.aggregate_samples)
+        workflow.add_node("choose_best_group", self.choose_best_group)
 
         workflow.add_edge(START, "setup")
         workflow.add_edge("setup", "sample_llm")
         workflow.add_edge("sample_llm", "aggregate_samples")
-        workflow.add_edge("aggregate_samples", END)
+        workflow.add_edge("aggregate_samples", "choose_best_group")
+        workflow.add_edge("choose_best_group", END)
         return workflow.compile()
     
     def create_graph(self):
