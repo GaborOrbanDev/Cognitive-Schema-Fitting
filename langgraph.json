@@ -1,6 +1,6 @@
 {
   "graphs": {
-    "sc_schema": "./schemas/sc_schema.py:graph",
+    "sc_schema": "./schemas/cotsc_schema.py:graph",
     "spp_schema": "./schemas/spp_schema.py:graph",
     "tot_schema": "./schemas/tot_schema.py:graph"
   }

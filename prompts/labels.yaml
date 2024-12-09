@@ -5,6 +5,6 @@ tot:
 spp:
   - name: Solo Performance Prompting
   - source: https://arxiv.org/pdf/2307.05300
-sc:
-  - name: Self Consistency
+cotsc:
+  - name: Chain of Thought Self Consistency
   - source: https://arxiv.org/pdf/2203.11171
