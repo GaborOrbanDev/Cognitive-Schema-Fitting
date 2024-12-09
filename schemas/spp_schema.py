@@ -134,7 +134,7 @@ class SPPAgent:
     def revision_router(self, state: SchemaAgentState) -> str:
         number_of_revisions = len([message for message in state.messages if getattr(message, "source_node", None) == "feedback"])
         last_message = state.messages[-1]
-        if "<OK>" in last_message.content or number_of_revisions > 5:
+        if "<OK>" in last_message.content or number_of_revisions > 3:
             return "resolve"
         else:
             return "revise"
