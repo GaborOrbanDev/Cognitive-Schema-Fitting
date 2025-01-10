@@ -1,18 +1,15 @@
 # %% Importing libraries
 import os
-from operator import add
-from typing_extensions import TypedDict, Annotated
+import openai
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage
+from pydantic import BaseModel, Field
+from typing_extensions import Annotated
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
-from langchain_core.prompt_values import ChatPromptValue
 from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, MessagesState, START, END
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.graph.state import CompiledStateGraph
-import openai
-from pydantic import BaseModel, Field
 
 load_dotenv()
 
@@ -25,6 +22,7 @@ class Solution(BaseModel):
 
     scratchpad: str = Field(..., description="The scratchpad parsing the solution to solution index. You might leave it alone.")
     index: int
+
 
 class Task(BaseModel):
     description: str
