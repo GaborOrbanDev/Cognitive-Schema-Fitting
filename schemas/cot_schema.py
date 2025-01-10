@@ -16,7 +16,6 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # %% Schema classes
-
 class Solution(BaseModel):
     """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
 
@@ -57,11 +56,11 @@ class CoTAgent:
         workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("cognition", self._cognition)
-        workflow.add_node("resolve", self._resolve)
+        workflow.add_node("resolution", self._resolution)
         workflow.add_edge(START, "schema_setup")
         workflow.add_edge("schema_setup", "cognition")
-        workflow.add_edge("cognition", "resolve")
-        workflow.add_edge("resolve", END)
+        workflow.add_edge("cognition", "resolution")
+        workflow.add_edge("resolution", END)
         return workflow.compile()
     
     def __call__(self):
@@ -81,7 +80,7 @@ class CoTAgent:
     def _cognition(self, state: AgentState) -> AgentState:
         return {"messages": [self.llm.invoke(state.messages)]}
     
-    def _resolve(self, state: AgentState) -> AgentState:
+    def _resolution(self, state: AgentState) -> AgentState:
         chain = (
             ChatPromptTemplate.from_messages([
                 *state.messages,
