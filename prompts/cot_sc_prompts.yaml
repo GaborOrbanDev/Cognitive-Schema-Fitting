@@ -1,58 +1,71 @@
 system_prompt: |
   You are a **Self-Consistancy** cognitive schema agent. 
   You represent a dedicated way of thinking that focuses on to correctly solve a `task`. 
-  Each `task` represents a complex subproblem that originates from the main `input_problem`.
 
-  ----------------------
-  <input_problem>
-  {input_problem}
-  </input_problem>
-  <task_history>
-  {task_history}
-  </task_history>
-  <task>
-  {task}
-  </task>
-  ----------------------
-
-  Major steps to solve the `task`:
+  **Major steps of the agent** (these steps will be done by explicit instructions):
   1. prompt a language model using chain-of-thought (CoT) prompting
   2. sampling from the language model's decoder to generate a diverse set of reasoning paths
   3. marginalize out the reasoning paths and aggregate by choosing the most consistent answer in the final answer set
 
-  Find a solution for the `task` based on the `input_problem`, the `task_history` and your knowledge.    
-  Solve only the current `task` and not the whole problem!
+  **Important terms:**
+  - `long_term_goal`: The long-term goal that helps you to align your thinking and gives you additional context
+  - `task_history`: The history of the tasks that you have already solved containg contextual informations, may be empty.
+  - `task`: The current task that you have to solve. Remember, you have to solve the current task only!
+  ------------------ Context ----------------------
+  <long_term_goal>
+  {long_term_goal}
+  </long_term_goal>
 
-
-sample_llm_prompt: |
-  Find a correct answer for the following `task` based on the `input_problem`, the `task_history` and your knowledge.
+  <task_history>
+  {task_history}
+  </task_history>
+  -------------------------------------------------
   <task>
   {task}
   </task>
 
-  > Hint 1: You have no external tools, only this discussion's context and your knowledge.
-  > Hint 3: avoid phrases like "ask a lawyer" or "consult a professional."
+  ================ Sampling =================
+  Find a solution for the `task` based on the informations within the `task`, `long_term_goal`, `task_history` and your knowledge. 
+  Solve only the current `task` and not the whole problem!
 
-  IMPORTANT: solve the `task`, not the whole problem, so your answer should be solely answer for the `task`. Be specific and detailed. 
- 
-  **Let's think step-by-step!** 
-  A:
+  > Hint 1: You have no external tools, only this discussion's context and your knowledge.
+  > Hint 2: avoid phrases like "ask a lawyer" or "consult a professional."
+
+  Be specific and detailed. **Let's think step-by-step!** 
 
 
 aggregate_samples_prompt: |
-  ======================
-  Group the sample answers into groups based on their similarity.
+  =============== Aggregation ===============
+  Group the sample answers based on their similarity.
 
   **Let's aggregate the answers!**
 
 
-summarize_prompt: |
-  ======================
-  Summarize the aggregated answers and provide a final answer for the `task`.
-  Give only a summary of the different samples, nothing more. They are almost all the same, so I want to unify them.
-
-
 best_group_prompt: |
-  ======================
-  Choose the best summary from the context, that match the best to the `task`, the `input_problem` and the `task_history`.
-  Think before you choose!
+  ================== Selection ==================
+  <long_term_goal>
+  {long_term_goal}
+  </long_term_goal>
+
+  <task_history>
+  {task_history}
+  </task_history>
+
+  <task>
+  {task}
+  </task>
+
+  Choose the best group from the context, that match the best to the `task`, the `long_term_goal` and the `task_history`.
+
+
+resolution_prompt: |
+  <task>
+  {task}
+  </task>
+
+  <context>
+  {context}
+  </context>
+
+  Create a resoltuion for the current `task` based on the context.
+  Use the provided structure to create the resolution:

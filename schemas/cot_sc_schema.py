@@ -1,6 +1,9 @@
-# %% importing libraries
+# %% Importing libraries
+import os
 from pprint import pprint
 import operator
+from typing_extensions import Literal
+import openai
 from typing import Annotated, Any
 import yaml
 from dotenv import load_dotenv
@@ -13,86 +16,108 @@ from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field, ValidationError
 
-
 load_dotenv()
 
-# %% creating schema class
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# %% Schema classes
+class Solution(BaseModel):
+    """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
+
+    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
+    index: int
+
 
 class Task(BaseModel):
-    """`Task` object repesents a general but specific subproblem, decomoposed from the orginal `input_problem` of the user"""
-    description: str = Field(..., description="Description with essential details of the task")
-    
-
-class SolvedTask(Task):
-    """`SolvedTask` object represents a task that has been solved by the system"""
-    solution: str = Field(..., description="The solution of the task")
-
-
-class SchemaAgentInput(BaseModel):
-    input_problem: str = Field(..., description="The original problem statement given by the user")
-    task: Task = Field(..., description="The current task to be solved")
-    task_history: list[SolvedTask] = Field([], description="List of tasks that have been solved so far")
-
-
-class SchemaAgentOutput(BaseModel):
-    solution: Any = Field("", description="The solution of the task")
+    description: str
+    solution: Solution | None = None
 
 
 class SampleResponse(BaseModel):
     """A sample response from the model for the given prompt"""
 
-    chain_of_thought: Annotated[str, operator.add] = Field("", description="This is a scratchpad for the model to think on the question step by step")
-    answer: Annotated[str, operator.add] = Field("", description="Here the model places the answer for the given question")
+    chain_of_thought: str = Field(..., description="This is a scratchpad for the model to think on the question step by step")
+    answer: str = Field(..., description="Here the model places the answer for the given question")
 
 
-class SchemaAgentState(SchemaAgentInput, SchemaAgentOutput):
-    messages: Annotated[list[AnyMessage], add_messages] = Field([], description="The inner messages of the agent")
+class AgentInput(BaseModel):
+    long_term_goal: str = Field(default="Solve the task accurately and efficiently")
+    task_history: list[Task] = []
+    task: Task
+
+
+class AgentOutput(BaseModel):
+    task: Task
+
+
+class AgentState(AgentInput, AgentOutput):
+    messages: Annotated[list[AnyMessage], add_messages] = []
     samples: list[SampleResponse] = []
     largest_groups: list[list[SampleResponse]] = []
 
 
-# %% creating agent class
-
-class SCAgent:
-    def __init__(self) -> None:
-        with open("./prompts/cot_sc_prompts.yaml", "r") as f:
+# %% Agent class
+class CoTSCAgent:
+    def __init__(self, temperature: float = 1, prompt_file_path: str | None = None, sample_count: int = 8) -> None:
+        if prompt_file_path is None:
+            prompt_file_path = "./prompts/cot_sc_prompts.yaml"
+        with open(prompt_file_path, "r") as f:
             self.prompts = yaml.safe_load(f)
 
-        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
+        self.llm_aggregator = ChatOpenAI(model="gpt-4o-mini", temperature=0.5)
+        self.sample_count = sample_count
 
-    def schema_setup(self, state: SchemaAgentInput) -> SchemaAgentState:
+    def create_graph(self) -> CompiledStateGraph:
+        workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
+        workflow.add_node("schema_setup", self._schema_setup)
+        workflow.add_node("sample_llm", self._sample_llm)
+        workflow.add_node("aggregate_samples", self._aggregate_samples)
+        workflow.add_node("choose_best_group", self._choose_best_group)
+        workflow.add_node("resolution", self._resolution)
+        workflow.add_edge(START, "schema_setup")
+        workflow.add_edge("schema_setup", "sample_llm")
+        workflow.add_edge("sample_llm", "aggregate_samples")
+        workflow.add_conditional_edges("aggregate_samples", self._resolution_router)
+        workflow.add_edge("choose_best_group", "resolution")
+        workflow.add_edge("resolution", END)
+        return workflow.compile()
+    
+    def __call__(self):
+        return self.create_graph()
+
+    # --------------------------------------------------------------------------------
+
+    def _schema_setup(self, state: AgentInput) -> AgentState:
         prompt_template = SystemMessagePromptTemplate.from_template(self.prompts["system_prompt"])
         message = prompt_template.format(**{
-            "input_problem": state.input_problem,
+            "long_term_goal": state.long_term_goal,
             "task_history": state.task_history,
             "task": state.task.description
         })
         return {"messages": [message]}
     
-    def sample_llm(self, state: SchemaAgentState) -> SchemaAgentState:
-        sample_count = 10
-
-        chain = (
-            ChatPromptTemplate.from_messages([
-                ("placeholder", "{context}"),
-                ("user", "{input}")
-            ])
-            | RunnableLambda(
-                lambda context: [context for _ in range(sample_count)]
+    def _sample_llm(self, state: AgentState) -> AgentState:
+        structured_llm = self.llm.with_structured_output(SampleResponse)
+        # sampling the model
+        samples: list[SampleResponse] = structured_llm.batch([
+            state.messages
+            for _ in range(self.sample_count)
+        ])
+        # creating messages
+        messages = [
+            sample_w_index
+            for i, sample in enumerate(samples)
+            for sample_w_index in 
+            (
+                AIMessage(f"========= Sample response index: {i} =========="),
+                AIMessage(sample.answer)
             )
-            | (self.llm.with_structured_output(SampleResponse)).map()
-        )
-
-        message = HumanMessagePromptTemplate.from_template(self.prompts["sample_llm_prompt"]).format(**{"task": state.task})
-        samples = chain.invoke({"context": state.messages, "input": message.content})
-
-        return {
-            "messages": [message],
-            "samples": samples
-        }
+        ]
+        return {"messages": messages, "samples": samples}
     
-    def aggregate_samples(self, state: SchemaAgentState) -> SchemaAgentState:
-
+    def _aggregate_samples(self, state: AgentState) -> AgentState:
+        # region method specific stuctures
         class SampleGroup(BaseModel):
             sample_indexies: list[int] = Field([], description="List of samples that are similar to each other. Each item of is the sample index in the original list of samples")
         
@@ -101,121 +126,93 @@ class SCAgent:
             sample_groups: list[SampleGroup] = Field([], description="List of groups of samples that are similar to each other")
             
             def get_largest_groups(self) -> list[list[SampleResponse]]:
+                # getting the length of the largest group
                 length = max(len(group.sample_indexies) for group in self.sample_groups)
-                return [[state.samples[i] for i in group.sample_indexies] 
-                        for group in self.sample_groups 
-                        if len(group.sample_indexies) == length]
+                # returning the largest group(s)
+                return [
+                    [
+                        state.samples[i] 
+                        for i in group.sample_indexies
+                    ] 
+                    for group in self.sample_groups 
+                    if len(group.sample_indexies) == length
+                ]
+        # endregion
+        # region method logic    
+        structured_llm = (
+                            self.llm_aggregator
+                            .with_structured_output(SampleAggregator)
+                            .with_retry(retry_if_exception_type=(ValidationError,), stop_after_attempt=2)
+                        )
+        
+        response: SampleAggregator = structured_llm.invoke(state.messages + [HumanMessage(self.prompts["aggregate_samples_prompt"])])
+        largest_groups = response.get_largest_groups()
+        messages = [
+            AIMessage("========= Sample Aggregation Result ========="),
+            AIMessage(str(largest_groups))
+        ]
+        return {"messages": messages, "largest_groups": largest_groups}
+        # endregion
 
+    def _resolution_router(self, state: AgentState) -> Literal["resolution", "choose_best_group"]:
+        if len(state.largest_groups) == 1:
+            return "resolution"
+        else:
+            return "choose_best_group"
 
-        clustering_chain = (
-            RunnableLambda(
-                lambda x: {
-                    "samples": [sample_w_index
-                                for i, sample in enumerate(x["samples"])
-                                for sample_w_index in (HumanMessage(f"=========Sample index: {i}=========="),
-                                                        AIMessage(getattr(sample, "answer")))]
-                } 
-            )
-            | ChatPromptTemplate.from_messages([
-                ("placeholder", "{samples}"),
-                ("user", self.prompts["aggregate_samples_prompt"])
-            ])
-            | RunnableParallel(
-                response=self.llm.with_structured_output(SampleAggregator).with_retry(retry_if_exception_type=(ValidationError,), stop_after_attempt=2),
-                context=RunnablePassthrough()
-            )
-            | RunnableLambda(
-                lambda x: {
-                    "largest_groups": x["response"].get_largest_groups(),
-                    "context": getattr(x["context"], "messages") + [AIMessage(content=str(x["response"]))]
-                }
-            )
-        )
-
-        largest_groups, context = clustering_chain.invoke({"samples": state.samples}).values()
-
-        return {
-            "messages": context,
-            "largest_groups": largest_groups
-        }
-    
-    def choose_best_group(self, state: SchemaAgentState) -> SchemaAgentState:
+    def _choose_best_group(self, state: AgentState) -> AgentState:
         class BestGroup(BaseModel):
             thought: str = Field("", description="The thought process of the model to choose the best group")
             best_group_index: int = Field(description="The index of the best group in the list of largest groups")
 
-        summarize_chain = (
-            RunnableLambda(
-                lambda x: {"group": [("assistant", sample.answer) for sample in x["group"]]}
-            )
-            | ChatPromptTemplate.from_messages([
-                state.messages[0],
-                ("placeholder", "{group}"),
-                ("user", self.prompts["summarize_prompt"])
-            ])
-            | self.llm
-        )
-
         best_group_selector = (
             RunnableLambda(
                 lambda x: {
-                    "summaries": [summary_w_index
-                                for i, summary in enumerate(x["summaries"])
-                                for summary_w_index in (HumanMessage(f"=========Summry index: {i}=========="), summary)]
+                    "groups": [
+                        group_w_index
+                        for i, group in enumerate(x["groups"])
+                        for group_w_index in (
+                            AIMessage(f"=========Group index: {i}=========="), 
+                            AIMessage(group[0].answer)
+                        )
+                    ]
                 } 
             )
             | ChatPromptTemplate.from_messages([
-                state.messages[0],
-                ("placeholder", "{summaries}"),
-                ("user", self.prompts["best_group_prompt"])
+                ("placeholder", "{groups}"),
+                ("user", 
+                 self.prompts["best_group_prompt"].format(**{
+                            "task": state.task, 
+                            "long_term_goal": state.long_term_goal, 
+                            "task_history": state.task_history
+                        }
+                    )
+                )
             ])
             | self.llm.with_structured_output(BestGroup) 
         )
 
-        summaries = summarize_chain.batch([{"group": group} for group in state.largest_groups])
+        response: BestGroup = best_group_selector.invoke({"groups": state.largest_groups})
+        best_group = state.largest_groups[response.best_group_index]
+        messages = [
+            AIMessage("========= Best Group Selection ========="),
+            AIMessage(response.thought),
+            AIMessage(str(best_group))
+        ]
 
-        if len(summaries) == 1:
-            return {
-                "messages": summaries,
-                "solution": summaries[0].content
-            }
-        else:
-            best_group = best_group_selector.invoke({"summaries": summaries})
-            return {
-                "messages": summaries + [AIMessage(str(best_group)), summaries[best_group.best_group_index]],
-                "solution": summaries[best_group.best_group_index].content
-            }
+        return {"messages": messages, "largest_groups": [best_group]}
     
-    # ---------------------------------------------------------------------------
-    
-    def __call__(self) -> CompiledStateGraph:
-        workflow = StateGraph(SchemaAgentState, input=SchemaAgentInput, output=SchemaAgentOutput)
-        workflow.add_node("setup", self.schema_setup)
-        workflow.add_node("sample_llm", self.sample_llm)
-        workflow.add_node("aggregate_samples", self.aggregate_samples)
-        workflow.add_node("choose_best_group", self.choose_best_group)
-
-        workflow.add_edge(START, "setup")
-        workflow.add_edge("setup", "sample_llm")
-        workflow.add_edge("sample_llm", "aggregate_samples")
-        workflow.add_edge("aggregate_samples", "choose_best_group")
-        workflow.add_edge("choose_best_group", END)
-        return workflow.compile()
-    
-    def create_graph(self):
-        return self.__call__()
-
-        
+    def _resolution(self, state: AgentState) -> AgentOutput:
+        chain = (
+            ChatPromptTemplate.from_messages([
+                ("human", self.prompts["resolution_prompt"])
+            ])
+            | self.llm.with_structured_output(Solution)
+        )
+        solution = chain.invoke({"task": state.task, "context": state.largest_groups[0][0].answer})
+        state.task.solution = solution
+        return {"task": state.task}
     
 
-# %% creating graph
-
-graph = SCAgent().create_graph()
-
-# %%
-# prompt = ChatPromptTemplate.from_messages([("user", "{input}")])
-# llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, logprobs=True)
-# chain = prompt | llm
-# pprint(chain.invoke({"input": "What is the capital of France?"})
-# )
-# %%
+# %% Testing the agent
+graph = CoTSCAgent().create_graph()
