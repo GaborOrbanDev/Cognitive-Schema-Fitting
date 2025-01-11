@@ -2,7 +2,7 @@ cot:
   - name: Chain of Thought
 cot_w_sr:
   - name: Chain of Thought with Self-Reference
-cotsc:
+cot_sc:
   - name: Chain of Thought Self Consistency
   - source: https://arxiv.org/pdf/2203.11171
 spp:

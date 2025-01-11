@@ -55,7 +55,7 @@ class SchemaAgentState(SchemaAgentInput, SchemaAgentOutput):
 
 class SCAgent:
     def __init__(self) -> None:
-        with open("./prompts/cotsc_prompts.yaml", "r") as f:
+        with open("./prompts/cot_sc_prompts.yaml", "r") as f:
             self.prompts = yaml.safe_load(f)
 
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
