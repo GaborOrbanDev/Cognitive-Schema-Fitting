@@ -1,15 +1,15 @@
 # %% Importing libraries
 import os
-import uuid
 from operator import add
-from typing_extensions import Literal, TypedDict, Annotated
+from typing_extensions import Literal, Annotated
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolCall
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, MessagesState, START, END
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
+from langgraph.graph.state import CompiledStateGraph
 import openai
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 class Solution(BaseModel):
     """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
 
-    scratchpad: str = Field(..., description="The scratchpad parsing the solution to solution index. You might leave it alone.")
+    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
     index: int
 
 
@@ -56,7 +56,7 @@ class CoTwSRAgent:
         self.eval_counter = 0
         self.max_eval_count = max_eval_count
 
-    def create_graph(self) -> StateGraph:
+    def create_graph(self) -> CompiledStateGraph:
         workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("cognition", self._cognition)
