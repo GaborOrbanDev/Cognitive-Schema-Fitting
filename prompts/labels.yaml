@@ -1,10 +1,12 @@
 cot:
   - name: Chain of Thought
-tot:
-  - name: Tree of Thought
-spp:
-  - name: Solo Performance Prompting
-  - source: https://arxiv.org/pdf/2307.05300
+cot_w_sr:
+  - name: Chain of Thought with Self-Reference
 cotsc:
   - name: Chain of Thought Self Consistency
   - source: https://arxiv.org/pdf/2203.11171
+spp:
+  - name: Solo Performance Prompting
+  - source: https://arxiv.org/pdf/2307.05300
+tot:
+  - name: Tree of Thought
