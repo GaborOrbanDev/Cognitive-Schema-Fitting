@@ -1,192 +1,157 @@
-# %% importing libraries
+# %% Importing libraries
+import os
 from typing import Annotated
+from typing_extensions import Literal
+import openai
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import AnyMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSerializable
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
-
 load_dotenv()
 
-# %% creating schema class
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# %% Schema classes
+class Solution(BaseModel):
+    """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
+
+    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
+    index: int
+
 
 class Task(BaseModel):
-    """`Task` object repesents a general but specific subproblem, decomoposed from the orginal `input_problem` of the user"""
-    description: str = Field(..., description="Description with essential details of the task")
-    
-
-class SolvedTask(Task):
-    """`SolvedTask` object represents a task that has been solved by the system"""
-    solution: str = Field(..., description="The solution of the task")
+    description: str
+    solution: Solution | None = None
 
 
-class SchemaAgentInput(BaseModel):
-    input_problem: str = Field(..., description="The original problem statement given by the user")
-    task: Task = Field(..., description="The current task to be solved")
-    task_history: list[SolvedTask] = Field([], description="List of tasks that have been solved so far")
+class AgentInput(BaseModel):
+    long_term_goal: str = Field(default="Solve the task accurately and efficiently")
+    task_history: list[Task] = []
+    task: Task
 
 
-class SchemaAgentOutput(BaseModel):
-    solution: str = Field("", description="The solution of the task")
+class AgentOutput(BaseModel):
+    task: Task
 
 
-class SchemaAgentState(SchemaAgentInput, SchemaAgentOutput):
-    messages: Annotated[list[AnyMessage], add_messages] = Field([], description="The inner messages of the agent")
+class AgentState(AgentInput, AgentOutput):
+    messages: Annotated[list[AnyMessage], add_messages] = []
 
 
-# %% creating agent class
-
+# %% Agent class
 class SPPAgent:
-    def __init__(self) -> None:
-        with open("./prompts/spp_prompts.yaml", "r") as f:
+    def __init__(self, temperature: float = 0.5, prompt_file_path: str | None = None, max_eval_count: int = 3) -> None:
+        if prompt_file_path is None:
+            prompt_file_path = "./prompts/spp_prompts.yaml"
+        with open(prompt_file_path, "r") as f:
             self.prompts = yaml.safe_load(f)
 
-        self.llm = ChatOpenAI(model="gpt-4o-mini")
+        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
+        self.max_eval_count = max_eval_count
 
-        self.node_context_returner_llm_chain: RunnableSerializable[dict, list[AnyMessage]] = (
-            ChatPromptTemplate.from_messages([
-                ("placeholder", "{context}"),
-                ("user", "{prompt}")
-            ])
-            | RunnableParallel(
-                response=self.llm,
-                context=RunnablePassthrough()
-            )
-            | RunnableLambda(
-                lambda x: [getattr(x["context"], "messages")[-1]] + [x["response"]]
-            )
-        )
-
-    # --------------------------------------------------------------------------------
-
-    def schema_setup(self, state: SchemaAgentInput) -> SchemaAgentState:
-        system_prompt = SystemMessage(
-            self.prompts["system_prompt"].format(
-                **{
-                    "input_problem": state.input_problem,
-                    "task_history": state.task_history,
-                    "task": state.task
-                }
-            )
-        )
-        
-        return {
-            "messages": [system_prompt]
-        }
-    
-    def persona_indentification(self, state: SchemaAgentState) -> SchemaAgentState:
-        response_context = self.node_context_returner_llm_chain.invoke({
-                "context": state.messages,
-                "prompt": self.prompts["persona_identification_prompt"]
-        })
-        return {
-            "messages": response_context
-        }
-    
-    def brainstorming(self, state: SchemaAgentState) -> SchemaAgentState:
-        response_context = self.node_context_returner_llm_chain.invoke({
-                "context": state.messages,
-                "prompt": self.prompts["brainstorming_prompt"]
-        })
-        return {
-            "messages": response_context
-        }
-    
-    def initial_solution_proposal(self, state: SchemaAgentState) -> SchemaAgentState:
-        if len([message for message in state.messages if getattr(message, "source_node", None) == "initial_solution_proposal"]) == 0:
-            prompt = self.prompts["first_round_initial_solution_proposal_prompt"]
-        else:
-            prompt = self.prompts["later_rounds_solution_proposal_prompt"]
-        
-        response_context = self.node_context_returner_llm_chain.invoke({
-                "context": state.messages,
-                "prompt": prompt
-        })
-
-        setattr(response_context[-1], "source_node", "initial_solution_proposal")
-
-        return {
-            "messages": response_context
-        }
-    
-    def feedback(self, state: SchemaAgentState) -> SchemaAgentState:
-        if len([message for message in state.messages if getattr(message, "source_node", None) == "feedback"]) == 0:
-            prompt = self.prompts["first_round_feedback_prompt"]
-        else:
-            prompt = self.prompts["later_rounds_feedback_prompt"]
-
-        response_context = self.node_context_returner_llm_chain.invoke({
-                "context": state.messages,
-                "prompt": prompt
-        })
-
-        setattr(response_context[-1], "source_node", "feedback")
-
-        return {
-            "messages": response_context
-        }
-    
-    def revision_router(self, state: SchemaAgentState) -> str:
-        number_of_revisions = len([message for message in state.messages if getattr(message, "source_node", None) == "feedback"])
-        last_message = state.messages[-1]
-        if "<OK>" in last_message.content or number_of_revisions > 3:
-            return "resolve"
-        else:
-            return "revise"
-        
-    def resolution(self, state: SchemaAgentState) -> SchemaAgentState:
-        context = [
-            state.messages[0], # system prompt
-            state.messages[-3], # last solution proposal
-            state.messages[-1] # last feedback
-        ]
-        prompt = self.prompts["resolution_prompt"]
-        response_context = self.node_context_returner_llm_chain.invoke({
-                "context": context,
-                "prompt": prompt
-        })
-        return {
-            "messages": response_context,
-            "solution": response_context[-1].content
-        }
-    
-    # --------------------------------------------------------------------------------
-
-    def __call__(self) -> CompiledStateGraph:
-        workflow = StateGraph(SchemaAgentState, input=SchemaAgentInput, output=SchemaAgentOutput)
-
-        workflow.add_node("schema_setup", self.schema_setup)
-        workflow.add_node("persona_indentification", self.persona_indentification)
-        workflow.add_node("brainstorming", self.brainstorming)
-        workflow.add_node("initial_solution_proposal", self.initial_solution_proposal)
-        workflow.add_node("feedback", self.feedback)
-        workflow.add_node("resolution", self.resolution)
-
+    def create_graph(self) -> CompiledStateGraph:
+        workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
+        workflow.add_node("schema_setup", self._schema_setup)
+        workflow.add_node("persona_identification", self._persona_identification)
+        workflow.add_node("brainstorming", self._brainstorming)
+        workflow.add_node("drafter", self._drafter)
+        workflow.add_node("feedback", self._feedback)
+        workflow.add_node("resolution", self._resolution)
         workflow.add_edge(START, "schema_setup")
-        workflow.add_edge("schema_setup", "persona_indentification")
-        workflow.add_edge("persona_indentification", "brainstorming")
-        workflow.add_edge("brainstorming", "initial_solution_proposal")
-        workflow.add_edge("initial_solution_proposal", "feedback")
-        workflow.add_conditional_edges(
-            "feedback",
-            self.revision_router,
-            {
-                "resolve": "resolution",
-                "revise": "initial_solution_proposal"
-            }
-        )
+        workflow.add_edge("schema_setup", "persona_identification")
+        workflow.add_edge("persona_identification", "brainstorming")
+        workflow.add_edge("brainstorming", "drafter")
+        workflow.add_edge("drafter", "feedback")
+        workflow.add_conditional_edges("feedback", self._refinement_router)
         workflow.add_edge("resolution", END)
-
         return workflow.compile()
+
+    def __call__(self):
+        return self.create_graph()
     
-    def create_graph(self):
-        return self.__call__()
+    # --------------------------------------------------------------------------------
 
+    def _schema_setup(self, state: AgentInput) -> AgentState:
+        prompt_template = SystemMessagePromptTemplate.from_template(self.prompts["system_prompt"])
+        message = prompt_template.format(**{
+            "long_term_goal": state.long_term_goal,
+            "task_history": state.task_history,
+            "task": state.task.description
+        })
+        return {"messages": [message]}
+    
+    def _get_prefix(self, caller: str) -> AIMessage:
+        return AIMessage(f"============= {caller.capitalize().replace('_', ' ')} =============\n", section=caller)
+    
+    def _persona_identification(self, state: AgentState) -> AgentState:
+        context = state.messages + [HumanMessage(self.prompts["persona_identification_prompt"])]
+        prefix = self._get_prefix("persona_identification")
+        return {"messages": [prefix, self.llm.invoke(context)]}
+    
+    def _brainstorming(self, state: AgentState) -> AgentState:
+        context = state.messages + [HumanMessage(self.prompts["brainstorming_prompt"])]
+        prefix = self._get_prefix("brainstorming")
+        return {"messages": [prefix, self.llm.invoke(context)]}
+    
+    def _drafter(self, state: AgentState) -> AgentState:
+        solution_i = len([m for m in state.messages if getattr(m, "section", None) == "draft"])
+        prompt = self.prompts["first_round_draft_prompt"] if solution_i == 0 else self.prompts["later_rounds_draft_prompt"]
+        context = state.messages + [HumanMessage(prompt)]
+        prefix = self._get_prefix("draft")
+        return {"messages": [prefix, self.llm.invoke(context)]}
+    
+    def _feedback(self, state: AgentState) -> AgentState:
+        class PersonaFeedback(BaseModel):
+            """Structure for persona feedback"""
+            name: str = Field(..., description="Name of the persona")
+            feedback: str = Field(..., description="Feedback from the perspective of the persona")
 
-# %%
-graph = SPPAgent().create_graph()
+        class Feedback(BaseModel):
+            """Structure for feedback"""
+            feedbacks_from_personas: list[PersonaFeedback] = Field(..., description="Feedbacks from different personas")
+            ai_assistant_decision: Literal["resolution", "drafter"] = Field(..., description="Decision made by the AI assistant. Resolution if the task is ready for resolution, drafter if the task needs more refinement.")
+
+        # creating structured LLM
+        structured_llm = self.llm.with_structured_output(Feedback)
+        # getting the number of previous feedbacks
+        feedback_i = len([m for m in state.messages if getattr(m, "section", None) == "later_rounds_feedback_prompt"])
+        # assigning the prompt
+        prompt = self.prompts["first_round_feedback_prompt"] if feedback_i == 0 else self.prompts["later_rounds_feedback_prompt"]
+
+        feedback: Feedback = structured_llm.invoke(state.messages + [HumanMessage(prompt)])
+        prefix = self._get_prefix("feedback")
+        return {"messages": [prefix, AIMessage(str(feedback), decision=feedback.ai_assistant_decision)]}
+    
+    def _refinement_router(self, state: AgentState) -> Literal["resolution", "drafter"]:
+        eval_count = len([m for m in state.messages if getattr(m, "section", None) == "feedback"])
+        decision: str | None = getattr(state.messages[-1], "decision", None)       
+        if eval_count >= self.max_eval_count:
+            return "resolution"
+        elif isinstance(decision, str) and decision in ["resolution", "drafter"]:
+            return decision
+        else:
+            return "drafter"
+        
+    def _resolution(self, state: AgentState) -> AgentState:
+        chain = (
+            ChatPromptTemplate.from_messages([
+                state.messages[0], # system prompt
+                state.messages[-3], # last proposal
+                state.messages[-1], # feedback
+                ("human", "{input}")
+            ])
+            | self.llm.with_structured_output(Solution)
+        )
+        solution = chain.invoke({"input": self.prompts["resolution_prompt"]})
+        state.task.solution = solution
+        return {"task": state.task}
+    
+
+# %% Testing the agent
+graph = SPPAgent().create_graph()    
