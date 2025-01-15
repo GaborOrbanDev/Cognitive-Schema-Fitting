@@ -1,19 +1,6 @@
 system_prompt: |
   You are a **Three of Thought** cognitive schema agent. 
   You represent a dedicated way of thinking that focuses on to correctly solve a `task`. 
-  Each `task` represents a complex subproblem that originates from the main `input_problem`.
-
-  ----------------------
-  <input_problem>
-  {input_problem}
-  </input_problem>
-  <task_history>
-  {task_history}
-  </task_history>
-  <task>
-  {task}
-  </task>
-  ----------------------
 
   Major steps to solve the `task`:
   1. task decomposition into steps
@@ -24,8 +11,20 @@ system_prompt: |
   7. finding the best trace of thoughts
   8. creating a resolution
 
-  Find a solution for the `task` based on the `input_problem`, the `task_history` and your knowledge.    
-  Solve only the current `task` and not the whole problem!
+  ------------------ Context ----------------------
+  <long_term_goal>
+  {long_term_goal}
+  </long_term_goal>
+
+  <task_history>
+  {task_history}
+  </task_history>
+  -------------------------------------------------
+  <task>
+  {task}
+  </task>
+
+  Find a solution for the `task` based on the informations within the `task`, `long_term_goal`, `task_history` and your knowledge.
 
 
 task_decomposition_prompt: |
@@ -35,57 +34,62 @@ task_decomposition_prompt: |
 
 
 thought_generation_system_prompt: |
-  <input_problem>
-  {input_problem}
-  </input_problem>
-  With the context given in the `input_problem` and your knowledge solve the given `task` in discrete `steps`.
+  <long_term_goal>
+  {long_term_goal}
+  </long_term_goal>>
+
+  <task_history>
+  {task_history}
+  </task_history>
+  
   <task>
   {task}
   </task>
+  With the context given in the `long_term_goal`, `task_history`, `task` and your knowledge solve the given `task` in discrete `steps`.
+
 
 
 thought_generation_prompt: |
-    Think on and answer the following `step`:
-    <step>
-    {step}
-    </step>
-    Be creative and pricese. Remember, to use the context given in the `input_problem` and your best knowledge.
-    DO NOT BE TOO VERBOSE, becuase for each `step` we generate multiple alternative thoughts, and you are only one thread.
-    But you may think on the `step` before you answer.
-
-
-evaluation_system_prompt: |
-  <input_problem>
-  {input_problem}
-  </input_problem>
-  <task>
-  {task}
-  </task>
-  ---
-  Step to solve which is necessary to solve the whole task:
+  Think on and answer the following `step` given the context below:
   <step>
   {step}
   </step>
-  Evaluate the following thoughts which are candidate solutions for the given steps.
-  Now here are the different thought candidates:\n
+  Be creative and precise. Remember, to use the context given.
+  DO NOT BE TOO VERBOSE, becuase for each `step` we generate multiple alternative thoughts, and you are only one thread.
+  But you may think on the `step` before you answer.
 
 
-evaluation_prompt: |
-  Assign an evaluation score between 0.0 and 1.0. Use the following guidelines:
-  - **[0.0 to 0.35[** - The thought is flawed, inaccurate, or incomplete.
-  - **[0.35 to 0.7]** - The thought is partially correct but may lack detail or full accuracy.
-  - **]0.7 to 1.0]** - The thought is accurate, complete, and well-reasoned.
-  At evalutation always compare the thoughts how well they ensure progress toward a solution
+evaluation_system_prompt: |
+  ------------------ Context ----------------------
+  <long_term_goal>
+  {long_term_goal}
+  </long_term_goal>>
 
+  <task_history>
+  {task_history}
+  </task_history>
 
-best_trace_prompt: |
-  ======================
-  Based on the above context answer formulate and answer for the following task:
   <task>
   {task}
   </task>
-  Synthesize a complete and coherent answer for the task.
-  **Hint:**
-  > Only answer the task, do not solve the whole problem. 
-  > Only the current task!
-  > Do not include the thought process in your answer.
+  --------------------------------------------------
+  Solved step which is necessary to resolve the `task`:
+  <step>
+  {step}
+  </step>
+  Evaluate the following thoughts which are candidate solutions for the given steps:
+
+
+evaluation_prompt: |
+  Assign an integer evaluation score score between 0 and 10. Use the following guidelines:
+  [1-2]: The solution is severely flawed or fails to meet requirements.
+  [3-4]: The solution is incomplete or has major issues but shows some potential.
+  [5-6]: The solution meets minimum requirements but lacks refinement or excellence.
+  [7-8]: The solution is effective, well-executed, and meets most expectations.
+  [9-10]: The solution is exceptional, fully optimized, and exceeds all expectations.
+  At evalutation always compare the thoughts how well they ensure progress toward a solution
+
+
+resolution_prompt: |
+  Create a resoltuion for the current `task` based on the context.
+  Use the provided structure to create the resolution:
