@@ -81,13 +81,21 @@ evaluation_system_prompt: |
 
 
 evaluation_prompt: |
-  Assign an integer evaluation score score between 0 and 10. Use the following guidelines:
-  [1-2]: The solution is severely flawed or fails to meet requirements.
-  [3-4]: The solution is incomplete or has major issues but shows some potential.
-  [5-6]: The solution meets minimum requirements but lacks refinement or excellence.
-  [7-8]: The solution is effective, well-executed, and meets most expectations.
-  [9-10]: The solution is exceptional, fully optimized, and exceeds all expectations.
-  At evalutation always compare the thoughts how well they ensure progress toward a solution
+  Assign an integer evaluation score score between 1 and 20. Use the following guidelines:
+  [1-2]: Critically flawed. The solution fails entirely to meet the requirements or is fundamentally unusable.
+  [3-4]: Severely incomplete. Major gaps or errors render the solution impractical despite some minimal effort.
+  [5-6]: Inadequate. Meets only a few basic requirements, with significant shortcomings in execution or feasibility.
+  [7-8]: Marginally functional. Shows partial understanding but lacks key features, depth, or accuracy.
+  [9-10]: Barely acceptable. Meets minimum requirements but lacks polish, refinement, and sufficient usability.
+  [11-12]: Meets basic standards. Functional but uninspired, with noticeable room for improvement in quality or efficiency.
+  [13-14]: Satisfactory. Effectively addresses the task with moderate execution quality, though not exceptional.
+  [15-16]: Good. Well-executed, efficient, and reliable, with only minor areas for refinement.
+  [17-18]: Very good. High-quality solution that exceeds expectations in key areas and is nearly flawless.
+  [19-20]: Outstanding. Exemplary solution that fully surpasses all expectations, offering maximum quality, innovation, and performance.
+  At evalutation always compare the thoughts how well they ensure progress toward a solution.
+
+  Also try to rank the thoughts with the scoring, so that the best thought gets the highest score and the worst thought the lowest score. 
+  You can also give the same score to multiple thoughts, but try to differentiate them as much as possible.
 
 
 resolution_prompt: |
