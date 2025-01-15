@@ -64,7 +64,7 @@ class AgentState(AgentInput, AgentOutput):
 
 # %% Agent class
 class ToTAgent:
-    def __init__(self, temperature: float = 0.5, prompt_file_path: str | None = None, prune_less_or_equal: int = 10) -> None:
+    def __init__(self, prompt_file_path: str | None = None, prune_less_or_equal: int = 10) -> None:
         if prompt_file_path is None:
             prompt_file_path = "./prompts/tot_prompts.yaml"
         with open(prompt_file_path, "r") as f:
@@ -90,6 +90,9 @@ class ToTAgent:
         workflow.add_edge("resolution", END)
         return workflow
 
+    def __call__(self) -> CompiledStateGraph:
+        return self.create_graph()
+    
     # --------------------------------------------------------------------------------
 
     def _schema_setup(self, state: AgentInput) -> AgentState:
