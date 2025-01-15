@@ -138,7 +138,7 @@ class SPPAgent:
         else:
             return "drafter"
         
-    def _resolution(self, state: AgentState) -> AgentState:
+    def _resolution(self, state: AgentState) -> AgentOutput:
         chain = (
             ChatPromptTemplate.from_messages([
                 state.messages[0], # system prompt

@@ -122,7 +122,7 @@ class CoTwSRAgent:
         else:
             return "refinement"
         
-    def _resolution(self, state: AgentState) -> AgentState:
+    def _resolution(self, state: AgentState) -> AgentOutput:
         chain = (
             ChatPromptTemplate.from_messages([
                 *state.messages,

@@ -80,7 +80,7 @@ class CoTAgent:
     def _cognition(self, state: AgentState) -> AgentState:
         return {"messages": [self.llm.invoke(state.messages)]}
     
-    def _resolution(self, state: AgentState) -> AgentState:
+    def _resolution(self, state: AgentState) -> AgentOutput:
         chain = (
             ChatPromptTemplate.from_messages([
                 *state.messages,
