@@ -1,10 +1,13 @@
+"""
+Chain of Thought with Self-Refinement cognitive schema implementation
+"""
+
 # %% Importing libraries
 import os
-from operator import add
 from typing_extensions import Literal, Annotated
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
@@ -12,36 +15,16 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.graph.state import CompiledStateGraph
 import openai
 from pydantic import BaseModel, Field
+from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# %% Schema classes
-class Solution(BaseModel):
-    """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
-
-    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
-    index: int
-
-
-class Task(BaseModel):
-    description: str
-    solution: Solution | None = None
-
-
-class AgentInput(BaseModel):
-    long_term_goal: str = Field(default="Solve the task accurately and efficiently")
-    task_history: list[Task] = []
-    task: Task
-
-
-class AgentOutput(BaseModel):
-    task: Task
-
-
+# %% Schema state class
 class AgentState(AgentInput, AgentOutput):
     messages: Annotated[list[AnyMessage], add_messages] = []
+    eval_counter: int = 0
 
 
 # %% Agent class
@@ -53,10 +36,9 @@ class CoTwSRAgent:
             self.prompts = yaml.safe_load(f)
 
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
-        self.eval_counter = 0
         self.max_eval_count = max_eval_count
 
-    def create_graph(self) -> CompiledStateGraph:
+    def create_agent(self) -> CompiledStateGraph:
         workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("cognition", self._cognition)
@@ -72,12 +54,11 @@ class CoTwSRAgent:
         return workflow.compile()
     
     def __call__(self):
-        return self.create_graph()
+        return self.create_agent()
 
     # --------------------------------------------------------------------------------
 
     def _schema_setup(self, state: AgentInput) -> AgentState:
-        self.eval_counter = 0
         prompt_template = SystemMessagePromptTemplate.from_template(self.prompts["system_prompt"])
         message = prompt_template.format(**{
             "long_term_goal": state.long_term_goal,
@@ -89,10 +70,8 @@ class CoTwSRAgent:
     def _cognition(self, state: AgentState) -> AgentState:
         return {"messages": [self.llm.invoke(state.messages)]}
     
-    def _get_prefix(self, caller: Literal["evaluation", "refinement"]) -> AIMessage:
-        if caller == "evaluation":
-            self.eval_counter += 1
-        return AIMessage(f"============= {caller.capitalize()} {self.eval_counter} =============\n")
+    def _get_prefix(self, caller: Literal["evaluation", "refinement"], eval_count: int) -> AIMessage:
+        return AIMessage(f"============= {caller.capitalize()} {eval_count} =============\n")
     
     def _evaluation(self, state: AgentState) -> AgentState:
         class SelfEvaluation(BaseModel):
@@ -106,16 +85,21 @@ class CoTwSRAgent:
             content=getattr(evaluation, "evaluation"),
             decision=getattr(evaluation, "decision")
         )
-        return {"messages": [self._get_prefix(caller="evaluation"), reponse]}
+        eval_count = state.eval_counter + 1
+        return {
+            "messages": [self._get_prefix(caller="evaluation", eval_count=eval_count), reponse],
+            "eval_counter": eval_count
+        }
     
     def _refinement(self, state: AgentState) -> AgentState:
-        prefix = self._get_prefix(caller="refinement")
+        eval_count = state.eval_counter
+        prefix = self._get_prefix(caller="refinement", eval_count=eval_count)
         response = self.llm.invoke(state.messages + [prefix, HumanMessage(self.prompts["refinement_prompt"])])
         return {"messages": [prefix, response]}
 
     def _refinement_router(self, state: AgentState) -> Literal["resolution", "refinement"]:
         decision: str | None = getattr(state.messages[-1], "decision", None)       
-        if self.eval_counter > self.max_eval_count:
+        if state.eval_counter > self.max_eval_count:
             return "resolution"
         elif isinstance(decision, str) and decision in ["resolution", "refinement"]:
             return decision
@@ -136,4 +120,5 @@ class CoTwSRAgent:
             
 
 # %% Testing the agent
-graph = CoTwSRAgent().create_graph()
+if __name__ == "__main__":
+    graph = CoTwSRAgent().create_agent()

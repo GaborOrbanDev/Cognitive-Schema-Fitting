@@ -1,54 +1,35 @@
+"""
+Self-Consisteny with Chain of Thought cognitive schema implementation
+source: https://arxiv.org/abs/2203.11171
+"""
+
 # %% Importing libraries
+from __future__ import annotations
 import os
-from pprint import pprint
-import operator
 from typing_extensions import Literal
 import openai
-from typing import Annotated, Any
+from typing import Annotated
 import yaml
 from dotenv import load_dotenv
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSerializable
+from langchain_core.messages import AnyMessage, HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain_core.runnables import RunnableLambda
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field, ValidationError
+from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# %% Schema classes
-class Solution(BaseModel):
-    """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
-
-    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
-    index: int
-
-
-class Task(BaseModel):
-    description: str
-    solution: Solution | None = None
-
-
+# %% Schema state class
 class SampleResponse(BaseModel):
     """A sample response from the model for the given prompt"""
 
     chain_of_thought: str = Field(..., description="This is a scratchpad for the model to think on the question step by step")
     answer: str = Field(..., description="Here the model places the answer for the given question")
-
-
-class AgentInput(BaseModel):
-    long_term_goal: str = Field(default="Solve the task accurately and efficiently")
-    task_history: list[Task] = []
-    task: Task
-
-
-class AgentOutput(BaseModel):
-    task: Task
-
 
 class AgentState(AgentInput, AgentOutput):
     messages: Annotated[list[AnyMessage], add_messages] = []
@@ -68,7 +49,7 @@ class CoTSCAgent:
         self.llm_aggregator = ChatOpenAI(model="gpt-4o-mini", temperature=0.5)
         self.sample_count = sample_count
 
-    def create_graph(self) -> CompiledStateGraph:
+    def create_agent(self) -> CompiledStateGraph:
         workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("sample_llm", self._sample_llm)
@@ -84,7 +65,7 @@ class CoTSCAgent:
         return workflow.compile()
     
     def __call__(self):
-        return self.create_graph()
+        return self.create_agent()
 
     # --------------------------------------------------------------------------------
 
@@ -215,4 +196,5 @@ class CoTSCAgent:
     
 
 # %% Testing the agent
-graph = CoTSCAgent().create_graph()
+if __name__ == "__main__":
+    graph = CoTSCAgent().create_agent()
