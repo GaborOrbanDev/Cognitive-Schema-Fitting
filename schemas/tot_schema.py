@@ -88,7 +88,7 @@ class ToTAgent:
         workflow.add_edge("cognition", "trace_optimatization")
         workflow.add_edge("trace_optimatization", "resolution")
         workflow.add_edge("resolution", END)
-        return workflow
+        return workflow.compile()
 
     def __call__(self) -> CompiledStateGraph:
         return self.create_graph()
