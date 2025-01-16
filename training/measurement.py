@@ -1,9 +1,13 @@
 import sys
 import os
 import time
+import json
 import pandas as pd
+import pickle
+import concurrent.futures as cf
 from langchain_community.callbacks import get_openai_callback
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.errors import GraphRecursionError
 from tqdm import tqdm
 from pydantic import BaseModel, Field
 
@@ -19,6 +23,7 @@ from schemas.tot_schema import ToTAgent
 
 
 class Measurement(BaseModel):
+    measurement_id: str = Field(..., description="ID of the measurement")
     cognitive_schema: str = Field(..., description="Label of the used cognitive schema")
     task_id: int = Field(..., description="ID of the task")
     task: str = Field(..., description="Text of the task")
@@ -33,21 +38,29 @@ class Measurement(BaseModel):
 
 data = pd.read_csv("./training/mmlu_all_w_id.csv", sep=";")
 
+
 def measure(task: dict, label: str, agent: CompiledStateGraph) -> None:
-    task_text = f"**Question**: {task["question"]} | **Answer choices**: {task["choices"]}"
+    task_text = f"**Question**: {task['question']} | **Answer choices**: {task['choices']}"
     choice_index = task["answer"]
     task_id = task["task_id"]
-    subject_of_task = task["subject_of_task"]
+    subject_of_task = task["subject"]
         
     with get_openai_callback() as cb:
         start_time = time.perf_counter()
-        response: dict[str, Task] = agent.invoke(AgentInput(task=Task(description=task_text)))
+        
+        try:
+            response: dict[str, Task] = agent.invoke(AgentInput(task=Task(description=task_text)))
+        except GraphRecursionError as ex:
+            print(f"GraphRecursionError: {ex}")
+            return
+        
         end_time = time.perf_counter()
         inference_time = end_time - start_time
 
         accuracy = 1 if response["task"].solution.index == choice_index else 0
 
         measurement = Measurement(
+            measurement_id=f"{label}_{task_id}".lower(),
             cognitive_schema=label,
             task_id=task_id,
             task=task_text,
@@ -59,5 +72,27 @@ def measure(task: dict, label: str, agent: CompiledStateGraph) -> None:
             completion_tokens=cb.completion_tokens,
             cost=cb.total_cost
         )
-
     
+    with open(f"./training/measurements/{measurement.measurement_id}.json", "w") as f:
+        record = measurement.model_dump()
+        json.dump(record, f)
+
+
+def main(schema_to_use: object) -> None:
+    with open("training/sample_indexes.pkl", "rb") as f:
+        sample_indexes: list[int] = pickle.load(f)
+
+    agent = schema_to_use().create_agent()
+
+    with cf.ThreadPoolExecutor(max_workers=3) as exec:
+        list(
+            tqdm(
+                exec.map(
+                    lambda idx: measure(data.iloc[idx], schema_to_use.__name__, agent), 
+                    sample_indexes
+                )
+            )
+        )
+
+if __name__ == "__main__":
+    main(CoTAgent)
