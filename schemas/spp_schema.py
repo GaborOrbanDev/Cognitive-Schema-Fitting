@@ -58,6 +58,9 @@ class SPPAgent:
     def __call__(self):
         return self.create_agent()
     
+    def __name__(self) -> str:
+        return "SPP"
+    
     # --------------------------------------------------------------------------------
 
     def _schema_setup(self, state: AgentInput) -> AgentState:
