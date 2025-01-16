@@ -14,24 +14,13 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.errors import GraphRecursionError
 import openai
 from pydantic import BaseModel, Field, ValidationError
+from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# %% Schema classes
-class Solution(BaseModel):
-    """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
-
-    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
-    index: int
-
-
-class Task(BaseModel):
-    description: str
-    solution: Solution | None = None
-
-
+# %% Schema state class
 class Thought(BaseModel):
     """A `Thought` object represents a distinct thought within the cognition of the system"""
 
@@ -43,16 +32,6 @@ class Thought(BaseModel):
     context: list[AnyMessage] = []
     children: list[Thought] = []
     ancestors: list[Thought] = []
-
-
-class AgentInput(BaseModel):
-    long_term_goal: str = Field(default="Solve the task accurately and efficiently")
-    task_history: list[Task] = []
-    task: Task
-
-
-class AgentOutput(BaseModel):
-    task: Task
 
 
 class AgentState(AgentInput, AgentOutput):
@@ -74,7 +53,7 @@ class ToTAgent:
         self.evaluation_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
         self.prune_less_or_equal = prune_less_or_equal
 
-    def create_graph(self) -> CompiledStateGraph:
+    def create_agent(self) -> CompiledStateGraph:
         workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("task_decomposition", self._task_decomposition)
@@ -90,7 +69,7 @@ class ToTAgent:
         return workflow.compile()
 
     def __call__(self) -> CompiledStateGraph:
-        return self.create_graph()
+        return self.create_agent()
     
     # --------------------------------------------------------------------------------
 
@@ -312,4 +291,4 @@ class ToTAgent:
 
 # %% Testing the agent
 if __name__ == "__main__":
-    graph = ToTAgent().create_graph()
+    graph = ToTAgent().create_agent()
