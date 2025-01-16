@@ -169,8 +169,6 @@ class ToTAgent:
             scores = [a.score for a in thought.ancestors] + [thought.score]
             traces.append(Trace(scores=scores, last_thought=thought))
 
-        for trace in traces:
-            print(f"Scores: {trace.scores}, Avg: {trace.avg_score()}")
         best_trace = max(traces, key=lambda x: x.avg_score())
 
         return {"solution_candidates": [best_trace.last_thought]}
