@@ -76,6 +76,8 @@ class ToTAgent:
     def __call__(self) -> CompiledStateGraph:
         return self.create_agent()
     
+    def __name__(self) -> str:
+        return "ToT"
     # --------------------------------------------------------------------------------
 
     def _schema_setup(self, state: AgentInput) -> AgentState:
