@@ -51,7 +51,7 @@ class ProblemDecompositionState(
 
 # endregion
 # ---------------------------------------------------------------------------------
-# region Problem Decomposer
+# region Definitions for cognitive schema selection
 
 
 class ProblemDecomposer:
