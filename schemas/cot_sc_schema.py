@@ -1,4 +1,5 @@
 # %% Importing libraries
+from __future__ import annotations
 import os
 from typing_extensions import Literal
 import openai
@@ -12,49 +13,32 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field, ValidationError
+from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# %% Schema classes
-class Solution(BaseModel):
-    """Solution for the given task. Choose the right option index from the list of options. Index starts from 0"""
-
-    scratchpad: str = Field(..., description="The scratchpad is for parsing the solution to solution index. You might leave it alone.")
-    index: int
-
-
-class Task(BaseModel):
-    description: str
-    solution: Solution | None = None
-
-
-class SampleResponse(BaseModel):
-    """A sample response from the model for the given prompt"""
-
-    chain_of_thought: str = Field(..., description="This is a scratchpad for the model to think on the question step by step")
-    answer: str = Field(..., description="Here the model places the answer for the given question")
-
-
-class AgentInput(BaseModel):
-    long_term_goal: str = Field(default="Solve the task accurately and efficiently")
-    task_history: list[Task] = []
-    task: Task
-
-
-class AgentOutput(BaseModel):
-    task: Task
-
-
-class AgentState(AgentInput, AgentOutput):
-    messages: Annotated[list[AnyMessage], add_messages] = []
-    samples: list[SampleResponse] = []
-    largest_groups: list[list[SampleResponse]] = []
-
 
 # %% Agent class
 class CoTSCAgent:
+    # --------------------------------------------------------------------------------
+    # region classes for the agent
+    
+    class SampleResponse(BaseModel):
+        """A sample response from the model for the given prompt"""
+
+        chain_of_thought: str = Field(..., description="This is a scratchpad for the model to think on the question step by step")
+        answer: str = Field(..., description="Here the model places the answer for the given question")
+
+    class AgentState(AgentInput, AgentOutput):
+        messages: Annotated[list[AnyMessage], add_messages] = []
+        samples: list[CoTSCAgent.SampleResponse] = []
+        largest_groups: list[list[CoTSCAgent.SampleResponse]] = []
+
+    # endregion
+    # --------------------------------------------------------------------------------
+
     def __init__(self, temperature: float = 1, prompt_file_path: str | None = None, sample_count: int = 8) -> None:
         if prompt_file_path is None:
             prompt_file_path = "./prompts/cot_sc_prompts.yaml"
@@ -66,7 +50,7 @@ class CoTSCAgent:
         self.sample_count = sample_count
 
     def create_graph(self) -> CompiledStateGraph:
-        workflow = StateGraph(AgentState, input=AgentInput, output=AgentOutput)
+        workflow = StateGraph(CoTSCAgent.AgentState, input=AgentInput, output=AgentOutput)
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("sample_llm", self._sample_llm)
         workflow.add_node("aggregate_samples", self._aggregate_samples)
@@ -95,9 +79,9 @@ class CoTSCAgent:
         return {"messages": [message]}
     
     def _sample_llm(self, state: AgentState) -> AgentState:
-        structured_llm = self.llm.with_structured_output(SampleResponse)
+        structured_llm = self.llm.with_structured_output(CoTSCAgent.SampleResponse)
         # sampling the model
-        samples: list[SampleResponse] = structured_llm.batch([
+        samples: list[CoTSCAgent.SampleResponse] = structured_llm.batch([
             state.messages
             for _ in range(self.sample_count)
         ])
@@ -122,7 +106,7 @@ class CoTSCAgent:
             scratchpad: str = Field("", description="Scratchpad for the model where it can think on the similarity of the different samples before grouping them")
             sample_groups: list[SampleGroup] = Field([], description="List of groups of samples that are similar to each other")
             
-            def get_largest_groups(self) -> list[list[SampleResponse]]:
+            def get_largest_groups(self) -> list[list[CoTSCAgent.SampleResponse]]:
                 # getting the length of the largest group
                 length = max(len(group.sample_indexies) for group in self.sample_groups)
                 # returning the largest group(s)
