@@ -1,3 +1,8 @@
+"""
+Self-Consisteny with Chain of Thought cognitive schema implementation
+source: https://arxiv.org/abs/2203.11171
+"""
+
 # %% Importing libraries
 from __future__ import annotations
 import os

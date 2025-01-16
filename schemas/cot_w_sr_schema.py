@@ -1,3 +1,7 @@
+"""
+Chain of Thought with Self-Refinement cognitive schema implementation
+"""
+
 # %% Importing libraries
 import os
 from typing_extensions import Literal, Annotated

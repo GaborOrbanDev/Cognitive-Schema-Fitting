@@ -1,3 +1,8 @@
+"""
+Tree of Thought cognitive schema implementation
+source: https://arxiv.org/abs/2305.10601
+"""
+
 # %% Importing libraries
 from __future__ import annotations
 import os

@@ -1,3 +1,8 @@
+"""
+Multi-Persona Self-Collaboration - Solo Performance Promping cognitive schema implementation
+source: https://arxiv.org/abs/2307.05300
+"""
+
 # %% Importing libraries
 import os
 from typing import Annotated

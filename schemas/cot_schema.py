@@ -1,3 +1,8 @@
+"""
+Chain of Thought cognitive schema implementation
+source: https://arxiv.org/abs/2201.11903
+"""
+
 # %% Importing libraries
 from __future__ import annotations
 import os
