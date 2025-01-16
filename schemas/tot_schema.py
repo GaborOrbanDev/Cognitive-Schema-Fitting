@@ -1,13 +1,12 @@
 # %% Importing libraries
 from __future__ import annotations
 import os
-from operator import add
-from typing_extensions import Literal, Annotated
+from typing_extensions import Annotated
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePick, RunnableSerializable
+from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnableSerializable
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
@@ -312,4 +311,5 @@ class ToTAgent:
 
 
 # %% Testing the agent
-graph = ToTAgent().create_graph()
+if __name__ == "__main__":
+    graph = ToTAgent().create_graph()

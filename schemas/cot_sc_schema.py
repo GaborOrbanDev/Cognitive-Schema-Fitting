@@ -1,16 +1,13 @@
 # %% Importing libraries
 import os
-from pprint import pprint
-import operator
 from typing_extensions import Literal
 import openai
-from typing import Annotated, Any
+from typing import Annotated
 import yaml
 from dotenv import load_dotenv
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSerializable
+from langchain_core.messages import AnyMessage, HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain_core.runnables import RunnableLambda
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
@@ -215,4 +212,5 @@ class CoTSCAgent:
     
 
 # %% Testing the agent
-graph = CoTSCAgent().create_graph()
+if __name__ == "__main__":
+    graph = CoTSCAgent().create_graph()

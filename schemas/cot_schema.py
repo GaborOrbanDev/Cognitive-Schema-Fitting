@@ -93,4 +93,5 @@ class CoTAgent:
         return {"task": state.task}
     
 # %% Testing the agent
-graph = CoTAgent().create_graph()
+if __name__ == "__main__":
+    graph = CoTAgent().create_graph()

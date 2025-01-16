@@ -5,9 +5,8 @@ from typing_extensions import Literal
 import openai
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import AnyMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSerializable
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
@@ -154,4 +153,5 @@ class SPPAgent:
     
 
 # %% Testing the agent
-graph = SPPAgent().create_graph()    
+if __name__ == "__main__":
+    graph = SPPAgent().create_graph()    

@@ -1,10 +1,9 @@
 # %% Importing libraries
 import os
-from operator import add
 from typing_extensions import Literal, Annotated
 import yaml
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
@@ -136,4 +135,5 @@ class CoTwSRAgent:
             
 
 # %% Testing the agent
-graph = CoTwSRAgent().create_graph()
+if __name__ == "__main__":
+    graph = CoTwSRAgent().create_graph()
