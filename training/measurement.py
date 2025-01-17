@@ -10,6 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.errors import GraphRecursionError
 from tqdm import tqdm
 from pydantic import BaseModel, Field
+from pydantic_core import ValidationError
 
 # Add the parent directory to the sys path to import the schemas
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -75,24 +76,35 @@ def measure(task: dict, label: str, agent: CompiledStateGraph) -> None:
     
     with open(f"./training/measurements/{measurement.measurement_id}.json", "w") as f:
         record = measurement.model_dump()
-        json.dump(record, f)
+        json.dump(record, f, indent=2)
 
+
+def get_history() -> list[int]:
+    history = []
+    for filename in os.listdir("./training/measurements"):
+        if filename.endswith(".json"):
+            with open(f"./training/measurements/{filename}") as f:
+                record = json.load(f)
+                history.append(record["task_id"])
+    return history
 
 def main(schema_to_use: object) -> None:
     with open("training/sample_indexes.pkl", "rb") as f:
         sample_indexes: list[int] = pickle.load(f)
 
-    agent = schema_to_use().create_agent()
+    agent: CompiledStateGraph = schema_to_use().create_agent()
+    agent: CompiledStateGraph = agent.with_retry(retry_if_exception_type=(Exception, ValidationError))
 
-    with cf.ThreadPoolExecutor(max_workers=3) as exec:
+    with cf.ThreadPoolExecutor(max_workers=4) as exec:
         list(
             tqdm(
                 exec.map(
-                    lambda idx: measure(data.iloc[idx], schema_to_use.__name__, agent), 
+                    lambda idx: measure(data.iloc[idx], "CoT-SC", agent), 
                     sample_indexes
-                )
+                ),
+                total=len(sample_indexes)
             )
         )
 
 if __name__ == "__main__":
-    main(CoTAgent)
+    main(CoTSCAgent)
