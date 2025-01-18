@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import time
 import json
 import pandas as pd
@@ -79,27 +80,38 @@ def measure(task: dict, label: str, agent: CompiledStateGraph) -> None:
         json.dump(record, f, indent=2)
 
 
-def get_history() -> list[int]:
+def get_history(label: str) -> list[int]:
     history = []
     for filename in os.listdir("./training/measurements"):
-        if filename.endswith(".json"):
-            with open(f"./training/measurements/{filename}") as f:
-                record = json.load(f)
-                history.append(record["task_id"])
+        if filename.endswith(".json") and filename.startswith(label):
+            id = re.search(r"\d+", filename).group(0)
+            id = int(id)
+            history.append(id)
     return history
 
-def main(schema_to_use: object) -> None:
+def filter_indexes(all_indexes: list[int], history: list[int]) -> list[int]:
+    return list(set(all_indexes) - set(history))
+
+def main(schema_to_use: object, label: str) -> None:
+    # Load the sample indexes
     with open("training/sample_indexes.pkl", "rb") as f:
         sample_indexes: list[int] = pickle.load(f)
 
-    agent: CompiledStateGraph = schema_to_use().create_agent()
-    agent: CompiledStateGraph = agent.with_retry(retry_if_exception_type=(Exception, ValidationError))
+    # Filter the sample indexes
+    print(f"Total samples: {len(sample_indexes)}")
+    sample_indexes = filter_indexes(sample_indexes, get_history(label.lower()))
+    print(f"Remaining samples: {len(sample_indexes)}")
 
-    with cf.ThreadPoolExecutor(max_workers=4) as exec:
+    # Create the agent
+    agent: CompiledStateGraph = schema_to_use().create_agent()
+    # agent: CompiledStateGraph = agent.with_retry(retry_if_exception_type=(Exception, ValidationError))
+
+    # Measure the agent performance
+    with cf.ThreadPoolExecutor(max_workers=3) as exec:
         list(
             tqdm(
                 exec.map(
-                    lambda idx: measure(data.iloc[idx], "CoT-SC", agent), 
+                    lambda idx: measure(data.iloc[idx], label, agent), 
                     sample_indexes
                 ),
                 total=len(sample_indexes)
@@ -107,4 +119,4 @@ def main(schema_to_use: object) -> None:
         )
 
 if __name__ == "__main__":
-    main(CoTSCAgent)
+    main(CoTwSRAgent, label="CoT-SR")
