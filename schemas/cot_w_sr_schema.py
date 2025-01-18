@@ -15,6 +15,7 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.graph.state import CompiledStateGraph
 import openai
 from pydantic import BaseModel, Field
+from pydantic_core import ValidationError
 from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
@@ -80,9 +81,9 @@ class CoTwSRAgent:
         class SelfEvaluation(BaseModel):
             """Evalation structure for the agent"""
             evaluation: str = Field(..., description="The text of the evaluation")
-            decision: Literal["resolution", "refinement"] = Field(..., description="The decision made by the agent based on the evaluation. Resoltion means the evaluation is good enough to resolve the task.")
+            decision: Literal["resolution", "refinement"] = Field(..., description=self.prompts["decision_prompt"])
 
-        eval_llm = self.llm.with_structured_output(SelfEvaluation)
+        eval_llm = self.llm.with_structured_output(SelfEvaluation).with_retry(retry_if_exception_type=(ValidationError,))
         evaluation = eval_llm.invoke(state.messages + [HumanMessage(self.prompts["evaluation_prompt"])])
         reponse = AIMessage(
             content=getattr(evaluation, "evaluation"),
