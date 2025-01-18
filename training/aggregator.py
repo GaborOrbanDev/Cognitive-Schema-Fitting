@@ -1,13 +1,13 @@
 import os
 import json
 
-def append_json_files(folder_path, output_file):
+def append_json_files(label, folder_path, output_file):
     aggregated_data = []
 
     # Iterate through files in the folder
     for file_name in os.listdir(folder_path):
         # Check if the file matches the naming pattern
-        if file_name.startswith("cotagent_") and file_name.endswith(".json"):
+        if file_name.startswith(label) and file_name.endswith(".json"):
             file_path = os.path.join(folder_path, file_name)
 
             try:
@@ -29,5 +29,7 @@ def append_json_files(folder_path, output_file):
 
 # Example usage
 folder_path = "./training/measurements"
-output_file = "aggregated_data.json"
-append_json_files(folder_path, output_file)
+output_file = "aggregated_data_cot_sc.json"
+label = "cot-sc"
+if (d := input("Are you sure")) == "y":
+    append_json_files(label, folder_path, output_file)
