@@ -37,6 +37,12 @@ evaluation_prompt: |
   **Let's verify step-by-step!**
 
 
+decision_prompt: |
+  Say either `resolution` or `refinement` based on the evaluation of the solution.
+  Label means:
+  - `resolution`: The solution is correct, complete or good enough to resolve the task. No further refinement is needed.
+  - `refinement`: The solution needs further refinement to resolve the task.
+  Say either `resolution` or `refinement` based on the evaluation of the solution. (Backticks are not needed)
 
 refinement_prompt: |
   Refine the solution for the current `task` based on all contextual informations.
