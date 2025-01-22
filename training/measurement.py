@@ -107,7 +107,7 @@ def main(schema_to_use: object, label: str) -> None:
     # agent: CompiledStateGraph = agent.with_retry(retry_if_exception_type=(Exception, ValidationError))
 
     # Measure the agent performance
-    with cf.ThreadPoolExecutor(max_workers=3) as exec:
+    with cf.ThreadPoolExecutor(max_workers=7) as exec:
         list(
             tqdm(
                 exec.map(
@@ -119,4 +119,4 @@ def main(schema_to_use: object, label: str) -> None:
         )
 
 if __name__ == "__main__":
-    main(CoTwSRAgent, label="CoT-SR")
+    main(ToTAgent, label="ToT")
