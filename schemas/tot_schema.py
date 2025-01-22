@@ -261,7 +261,7 @@ class ToTAgent:
                                 ("user", self.prompts["evaluation_prompt"])
                             ]
                         ) 
-                        | ChatOpenAI(model="gpt-4o", temperature=0.2).with_structured_output(EvalThoughts)
+                        | ChatOpenAI(model="gpt-4o-mini", temperature=0.2).with_structured_output(EvalThoughts)
                     ),
                     thoughts=lambda x: x["thoughts"]
                 )
