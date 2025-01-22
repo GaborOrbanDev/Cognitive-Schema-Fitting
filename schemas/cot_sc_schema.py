@@ -15,9 +15,11 @@ from langchain_core.messages import AnyMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_core.runnables import RunnableLambda
 from langchain_openai import ChatOpenAI
+from langgraph.pregel import RetryPolicy
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
+from pydantic_core import ValidationError
 from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
@@ -39,7 +41,7 @@ class AgentState(AgentInput, AgentOutput):
 
 # %% Agent class
 class CoTSCAgent:
-    def __init__(self, temperature: float = 1, prompt_file_path: str | None = None, sample_count: int = 8) -> None:
+    def __init__(self, temperature: float = 0.8, prompt_file_path: str | None = None, sample_count: int = 8) -> None:
         if prompt_file_path is None:
             prompt_file_path = "./prompts/cot_sc_prompts.yaml"
         with open(prompt_file_path, "r") as f:
@@ -54,7 +56,11 @@ class CoTSCAgent:
         workflow.add_node("schema_setup", self._schema_setup)
         workflow.add_node("sample_llm", self._sample_llm)
         workflow.add_node("aggregate_samples", self._aggregate_samples)
-        workflow.add_node("choose_best_group", self._choose_best_group)
+        workflow.add_node(
+            "choose_best_group", 
+            self._choose_best_group,
+            retry=RetryPolicy(retry_on=(IndexError,))
+        )
         workflow.add_node("resolution", self._resolution)
         workflow.add_edge(START, "schema_setup")
         workflow.add_edge("schema_setup", "sample_llm")
@@ -66,6 +72,9 @@ class CoTSCAgent:
     
     def __call__(self):
         return self.create_agent()
+    
+    def __name__(self) -> str:
+        return "CoT-SC"
 
     # --------------------------------------------------------------------------------
 
@@ -79,7 +88,11 @@ class CoTSCAgent:
         return {"messages": [message]}
     
     def _sample_llm(self, state: AgentState) -> AgentState:
-        structured_llm = self.llm.with_structured_output(SampleResponse)
+        structured_llm = (
+            self.llm
+            .with_structured_output(SampleResponse)
+            .with_retry(retry_if_exception_type=(ValidationError,))
+        )
         # sampling the model
         samples: list[SampleResponse] = structured_llm.batch([
             state.messages
@@ -170,7 +183,7 @@ class CoTSCAgent:
                     )
                 )
             ])
-            | self.llm.with_structured_output(BestGroup) 
+            | self.llm.with_structured_output(BestGroup).with_retry(retry_if_exception_type=(ValidationError,)) 
         )
 
         response: BestGroup = best_group_selector.invoke({"groups": state.largest_groups})

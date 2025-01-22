@@ -55,6 +55,9 @@ class CoTwSRAgent:
     
     def __call__(self):
         return self.create_agent()
+    
+    def __name__(self) -> str:
+        return "CoT-SR"
 
     # --------------------------------------------------------------------------------
 
@@ -77,7 +80,7 @@ class CoTwSRAgent:
         class SelfEvaluation(BaseModel):
             """Evalation structure for the agent"""
             evaluation: str = Field(..., description="The text of the evaluation")
-            decision: Literal["resolution", "refinement"] = Field(..., description="The decision made by the agent based on the evaluation. Resoltion means the evaluation is good enough to resolve the task.")
+            decision: Literal["resolution", "refinement"] = Field(..., description=self.prompts["decision_prompt"])
 
         eval_llm = self.llm.with_structured_output(SelfEvaluation)
         evaluation = eval_llm.invoke(state.messages + [HumanMessage(self.prompts["evaluation_prompt"])])

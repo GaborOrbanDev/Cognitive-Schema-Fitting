@@ -15,7 +15,9 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END, add_messages
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.pregel import RetryPolicy
 from pydantic import BaseModel, Field
+from pydantic_core import ValidationError
 from schemas.agent_state_classes import AgentInput, AgentOutput, Solution
 
 load_dotenv()
@@ -44,7 +46,7 @@ class SPPAgent:
         workflow.add_node("persona_identification", self._persona_identification)
         workflow.add_node("brainstorming", self._brainstorming)
         workflow.add_node("drafter", self._drafter)
-        workflow.add_node("feedback", self._feedback)
+        workflow.add_node("feedback", self._feedback, retry=RetryPolicy(retry_on=(ValidationError,)))
         workflow.add_node("resolution", self._resolution)
         workflow.add_edge(START, "schema_setup")
         workflow.add_edge("schema_setup", "persona_identification")
@@ -57,6 +59,9 @@ class SPPAgent:
 
     def __call__(self):
         return self.create_agent()
+    
+    def __name__(self) -> str:
+        return "SPP"
     
     # --------------------------------------------------------------------------------
 

@@ -76,6 +76,8 @@ class ToTAgent:
     def __call__(self) -> CompiledStateGraph:
         return self.create_agent()
     
+    def __name__(self) -> str:
+        return "ToT"
     # --------------------------------------------------------------------------------
 
     def _schema_setup(self, state: AgentInput) -> AgentState:
@@ -167,8 +169,6 @@ class ToTAgent:
             scores = [a.score for a in thought.ancestors] + [thought.score]
             traces.append(Trace(scores=scores, last_thought=thought))
 
-        for trace in traces:
-            print(f"Scores: {trace.scores}, Avg: {trace.avg_score()}")
         best_trace = max(traces, key=lambda x: x.avg_score())
 
         return {"solution_candidates": [best_trace.last_thought]}
@@ -261,7 +261,7 @@ class ToTAgent:
                                 ("user", self.prompts["evaluation_prompt"])
                             ]
                         ) 
-                        | ChatOpenAI(model="gpt-4o", temperature=0.2).with_structured_output(EvalThoughts)
+                        | ChatOpenAI(model="gpt-4o-mini", temperature=0.2).with_structured_output(EvalThoughts)
                     ),
                     thoughts=lambda x: x["thoughts"]
                 )
