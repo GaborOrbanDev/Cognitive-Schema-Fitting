@@ -21,3 +21,8 @@ langchain-openai
 # Langgraph
 langgraph
 langgraph-cli[inmem]==0.1.55
+
+# data visualization and algorithm
+seaborn
+matplotlib
+scikit-learn
